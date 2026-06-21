@@ -441,9 +441,17 @@ async function startBot(config) {
     if (isRunning) return;
     isRunning = true;
 
-    const { code, platform } = config;
+    const { code, platform, runtimeConfig } = config;
 
     CONFIG.platform = platform || 'qq';
+
+    // 应用运行时连接配置（客户端版本、服务器地址等，覆盖 config.js 的硬编码值）
+    if (runtimeConfig && typeof runtimeConfig === 'object') {
+        if (runtimeConfig.serverUrl) CONFIG.serverUrl = String(runtimeConfig.serverUrl).trim();
+        if (runtimeConfig.clientVersion) CONFIG.clientVersion = String(runtimeConfig.clientVersion).trim();
+        if (runtimeConfig.os) CONFIG.os = String(runtimeConfig.os).trim();
+    }
+
     // 注意：间隔配置由 applyIntervalsToRuntime 统一处理，不要在这里覆盖
 
     await loadProto();

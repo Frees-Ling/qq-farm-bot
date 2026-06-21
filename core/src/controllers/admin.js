@@ -21,6 +21,7 @@ const { createModuleLogger } = require('../services/logger');
 const { getSchedulerRegistrySnapshot } = require('../services/scheduler');
 const { OauthService } = require('../services/oauth');
 const { fetchProfileByCode } = require('../services/manual-login-profile');
+const { MiniProgramLoginSession } = require('../services/qrlogin');
 const userStore = require('../models/user-store');
 
 const hashPassword = (pwd) => crypto.createHash('sha256').update(String(pwd || '')).digest('hex');
@@ -335,7 +336,7 @@ function startAdminServer(dataProvider) {
         const callbackUrl = `${protocol}://${host}/api/oauth/callback`;
 
         const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
-        const result = await oauth.callback(code);
+        const result = await oauth.callback(code, type);
 
         if (result.code === 0 && result.social_uid) {
             const { social_uid, nickname, faceimg } = result;
@@ -436,8 +437,51 @@ function startAdminServer(dataProvider) {
         res.json(result);
     });
 
+    // ============ QQ 扫码登录 API ============
+    app.post('/api/qr/create', async (req, res) => {
+        try {
+            const result = await MiniProgramLoginSession.requestLoginCode();
+            if (result && result.code) {
+                res.json({
+                    ok: true,
+                    data: { code: result.code, url: result.url, image: result.image }
+                });
+            } else {
+                res.json({ ok: false, error: '获取二维码失败' });
+            }
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    app.post('/api/qr/check', async (req, res) => {
+        try {
+            const { code } = req.body || {};
+            if (!code) return res.status(400).json({ ok: false, error: '缺少 code 参数' });
+            const result = await MiniProgramLoginSession.queryStatus(code);
+            res.json({ ok: true, data: result });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    app.post('/api/qr/auth-code', async (req, res) => {
+        try {
+            const { ticket } = req.body || {};
+            if (!ticket) return res.status(400).json({ ok: false, error: '缺少 ticket 参数' });
+            const code = await MiniProgramLoginSession.getAuthCode(ticket, '1112386029');
+            if (code) {
+                res.json({ ok: true, data: { code } });
+            } else {
+                res.json({ ok: false, error: '获取 Code 失败' });
+            }
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     app.use('/api', (req, res, next) => {
-        if (req.path === '/login' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth') return next();
+        if (req.path === '/login' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth') return next();
         return authRequired(req, res, next);
     });
 
@@ -1503,7 +1547,7 @@ function startAdminServer(dataProvider) {
                 ? store.getRuntimeConfig(currentUser.username)
                 : {
                     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
-                    clientVersion: '1.7.0.6_20260313',
+                    clientVersion: '1.12.1.6',
                     os: 'iOS',
                     osVersion: 'iOS 26.2.1',
                     networkType: 'wifi',

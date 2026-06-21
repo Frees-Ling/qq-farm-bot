@@ -71,6 +71,7 @@ function createRuntimeEngine(options = {}) {
     buildConfigSnapshotForAccount,
     triggerOfflineReminder,
     addOrUpdateAccount: store.addOrUpdateAccount,
+    getRuntimeConfig: store.getRuntimeConfig,
     onStatusSync: (accountId, status, accountName) => {
       runtimeEvents.emit('status', { accountId, status, accountName })
       if (onStatusSync) onStatusSync(accountId, status, accountName)

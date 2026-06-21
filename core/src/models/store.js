@@ -991,7 +991,7 @@ function deleteUserOfflineReminder(username) {
 // ============ 用户隔离的运行时连接配置 ============
 const DEFAULT_RUNTIME_CONFIG = {
     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
-    clientVersion: '1.7.0.6_20260313',
+    clientVersion: '1.12.1.6',
     os: 'iOS',
     osVersion: 'iOS 26.2.1',
     networkType: 'wifi',

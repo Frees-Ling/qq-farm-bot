@@ -18,6 +18,7 @@ function createWorkerManager(options) {
         addOrUpdateAccount,
         onStatusSync,
         onWorkerLog,
+        getRuntimeConfig,
     } = options;
     const managerScheduler = createScheduler('worker_manager');
     const useThreadRuntime = runtimeMode === 'thread' && !processRef.pkg && typeof WorkerThread === 'function';
@@ -85,12 +86,21 @@ function createWorkerManager(options) {
             wsError: null,
         };
 
+        // 获取运行时配置（客户端版本等）
+        let runtimeConfig = null;
+        if (typeof getRuntimeConfig === 'function' && account.username) {
+            try {
+                runtimeConfig = getRuntimeConfig(account.username);
+            } catch { /* ignore */ }
+        }
+
         // 发送启动指令
         child.send({
             type: 'start',
             config: {
                 code: account.code,
                 platform: account.platform,
+                runtimeConfig,
             },
         });
         child.send({ type: 'config_sync', config: buildConfigSnapshotForAccount(account.id) });
