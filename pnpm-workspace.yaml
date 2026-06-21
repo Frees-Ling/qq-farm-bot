@@ -2,6 +2,11 @@ packages:
   - core
   - web
 
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  protobufjs: false
+
 ignoredBuiltDependencies:
   - '@parcel/watcher'
   - esbuild

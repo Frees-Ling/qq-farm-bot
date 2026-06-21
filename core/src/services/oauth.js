@@ -49,11 +49,12 @@ class OauthService {
         }
     }
 
-    async callback(code) {
+    async callback(code, type='') {
         const params = new URLSearchParams({
             act: 'callback',
             appid: this.appId,
             appkey: this.appKey,
+            type,
             code
         });
 
