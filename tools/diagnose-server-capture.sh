@@ -14,6 +14,17 @@ echo "== ports =="
 ss -lntp 2>/dev/null | grep -E ':3000|:9988' || true
 
 echo
+echo "== desktop / qq =="
+if command -v qq >/dev/null 2>&1; then
+  echo "qq command: $(command -v qq)"
+else
+  echo "qq command: not found"
+fi
+dpkg -l 2>/dev/null | grep -Ei 'linuxqq|qq[[:space:]]' || true
+pgrep -af 'QQ|qq|vnc|Xvnc|xfce' 2>/dev/null || true
+ss -lntp 2>/dev/null | grep -E ':5901|:5902|:5903' || true
+
+echo
 echo "== services =="
 systemctl --no-pager --full status qq-farm-bot.service 2>/dev/null | sed -n '1,18p' || true
 systemctl --no-pager --full status qq-farm-code-capture.service 2>/dev/null | sed -n '1,18p' || true
@@ -54,7 +65,10 @@ echo
 echo "== QQ Farm game.js =="
 mapfile -t GAME_FILES < <(find /root /home -path '*miniapp_src*1112386029*game.js' -type f 2>/dev/null | sort)
 if [ "${#GAME_FILES[@]}" -eq 0 ]; then
-  echo "No QQ Farm game.js found. Open QQ Classic Farm once in the server QQ client."
+  echo "No QQ Farm game.js found."
+  echo "If this is Ubuntu server, install/start a desktop + Linux QQ first:"
+  echo "  sudo bash tools/setup-ubuntu-qq-desktop.sh"
+  echo "Then connect by VNC, scan QQ login, and open QQ Classic Farm once."
 else
   printf '%s\n' "${GAME_FILES[@]}"
 fi

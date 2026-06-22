@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USER_NAME="${SUDO_USER:-$(id -un)}"
+USER_NAME="${FARM_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"
 NODE_BIN="$(command -v node)"
 PYTHON_BIN="$(command -v python3 || command -v python)"
 PNPM_BIN="$(command -v pnpm || true)"
