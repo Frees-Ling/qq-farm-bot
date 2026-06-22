@@ -51,6 +51,7 @@ onMounted(() => {
 const wxAccountName = ref('')
 // QQ 扫码相关
 const qqAccountName = ref('')
+const qqCapturedCodeText = ref('')
 
 // 表单数据
 const form = reactive({
@@ -125,6 +126,37 @@ async function loadQqQRCode() {
   const success = await qqLoginStore.getQRCode()
   if (success)
     startQqCheck()
+}
+
+function extractCode(input: string) {
+  const raw = String(input || '').trim()
+  if (!raw)
+    return ''
+  const match = raw.match(/[?&]code=([^&\s]+)/i)
+  if (match && match[1])
+    return decodeURIComponent(match[1])
+  return raw
+}
+
+async function submitQqCapturedCode() {
+  errorMessage.value = ''
+  const code = extractCode(qqCapturedCodeText.value)
+  if (!code) {
+    errorMessage.value = '请粘贴 wss 链接里的 code 或纯 code'
+    return
+  }
+  if (/^-\d+$/.test(code)) {
+    errorMessage.value = '这是错误码，不是真实农场 code'
+    return
+  }
+  const name = qqAccountName.value.trim() || `QQ账号${Date.now()}`
+  await addAccount({
+    id: props.editData?.id,
+    name: props.editData ? (props.editData.name || name) : name,
+    code,
+    platform: 'qq',
+    loginType: 'gate_obt_code',
+  })
 }
 
 // 保存微信配置
@@ -241,6 +273,7 @@ watch(() => props.show, (newVal) => {
       form.platform = props.editData.platform || 'qq'
       wxAccountName.value = props.editData.name || ''
       qqAccountName.value = props.editData.name || ''
+      qqCapturedCodeText.value = ''
     }
     else {
       activeTab.value = 'manual'
@@ -249,6 +282,7 @@ watch(() => props.show, (newVal) => {
       form.platform = 'qq'
       wxAccountName.value = ''
       qqAccountName.value = ''
+      qqCapturedCodeText.value = ''
     }
   }
   else {
@@ -444,6 +478,21 @@ watch(activeTab, (tab) => {
             <div class="mt-1 opacity-80">
               手机 QQ 扫码确认后，系统会自动换取 QQ经典农场 code 并创建账号。如果腾讯返回校验失败，页面会直接显示接口返回原因。
             </div>
+          </div>
+
+          <div class="space-y-3 rounded-lg p-3" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 88%, var(--theme-text))' }">
+            <BaseTextarea
+              v-model="qqCapturedCodeText"
+              label="真实农场 code / wss 链接"
+              placeholder="粘贴 wss://gate-obt.nqf.qq.com/prod/ws?...&code=xxx 或直接粘贴 code"
+              :rows="3"
+            />
+            <BaseButton variant="primary" size="sm" :loading="loading" @click="submitQqCapturedCode">
+              用这个 code 创建 QQ 账号
+            </BaseButton>
+            <p class="text-xs leading-5 opacity-70" :style="{ color: 'var(--theme-text)' }">
+              网页 QQ 扫码返回 -3000 时，只有小程序实际连接 gate-obt 时产生的 code 才能登录农场。
+            </p>
           </div>
         </div>
 
