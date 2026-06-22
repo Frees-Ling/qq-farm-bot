@@ -97,4 +97,4 @@ fi
 
 echo
 echo "== expected success log =="
-echo 'logs/code-capture.log should contain: forwarded username=admin ... response={"ok":true,...}'
+echo 'logs/code-capture.log should contain: forwarded username=<username> ... response={"ok":true,...}'

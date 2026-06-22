@@ -65,6 +65,9 @@ Now in the server VNC desktop:
 Watch:
   tail -f $ROOT/logs/code-capture.log
 
+Or use the guided waiter:
+  bash tools/wait-account-capture.sh $USERNAME [proxyUrl]
+
 Success:
   forwarded username=$USERNAME ... response={"ok":true,...}
 EOF
