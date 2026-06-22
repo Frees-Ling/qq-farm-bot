@@ -8,6 +8,7 @@ import { unwrapOk } from '@/api/result'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
+import { useQqLoginStore } from '@/stores/qq-login'
 import { useWxLoginStore } from '@/stores/wx-login'
 
 const props = defineProps<{
@@ -18,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'saved'])
 
 const wxLoginStore = useWxLoginStore()
+const qqLoginStore = useQqLoginStore()
 
 // 标签页：manual-手动填码, wx-微信扫码, qq-QQ扫码, wx-config-微信配置
 const activeTab = ref<'wx' | 'qq' | 'wx-config' | 'manual'>('manual')
@@ -92,13 +94,37 @@ async function loadWxQRCode() {
   }
 }
 
-const qqCaptureHttpUrl = computed(() => {
-  const host = window.location.hostname || 'SERVER_IP'
-  return `http://${host}:9988/admin`
-})
+const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
+  if (!['ready', 'scanning', 'confirming'].includes(qqLoginStore.status))
+    return
 
-function openQqCapturePage() {
-  window.open(qqCaptureHttpUrl.value, '_blank', 'noopener,noreferrer')
+  const result = await qqLoginStore.checkLogin()
+  if (result.success && result.ticket) {
+    stopQqCheck()
+    const codeResult = await qqLoginStore.getFarmCode(result.ticket)
+    if (codeResult.success && codeResult.code) {
+      const name = qqAccountName.value.trim() || result.nickname || (result.uin ? `QQ${result.uin}` : `QQ账号${Date.now()}`)
+      await addAccount({
+        id: props.editData?.id,
+        name: props.editData ? (props.editData.name || name) : name,
+        code: codeResult.code,
+        platform: 'qq',
+        loginType: 'qq_qr',
+        uin: result.uin || '',
+        qq: result.uin || '',
+        nick: result.nickname || '',
+      })
+    }
+  }
+}, 2000, { immediate: false })
+
+async function loadQqQRCode() {
+  if (activeTab.value !== 'qq')
+    return
+  qqLoginStore.resetState()
+  const success = await qqLoginStore.getQRCode()
+  if (success)
+    startQqCheck()
 }
 
 // 保存微信配置
@@ -187,9 +213,21 @@ const wxQrImageSrc = computed(() => {
   return `data:image/png;base64,${wxLoginStore.qrCode}`
 })
 
+const qqQrImageSrc = computed(() => {
+  if (!qqLoginStore.qrCode)
+    return ''
+  if (qqLoginStore.qrCode.startsWith('data:'))
+    return qqLoginStore.qrCode
+  if (qqLoginStore.qrCode.startsWith('http'))
+    return qqLoginStore.qrCode
+  return `data:image/png;base64,${qqLoginStore.qrCode}`
+})
+
 function close() {
   stopWxCheck()
+  stopQqCheck()
   wxLoginStore.resetState()
+  qqLoginStore.resetState()
   emit('close')
 }
 
@@ -215,17 +253,28 @@ watch(() => props.show, (newVal) => {
   }
   else {
     stopWxCheck()
+    stopQqCheck()
     wxLoginStore.resetState()
+    qqLoginStore.resetState()
   }
 })
 
 watch(activeTab, (tab) => {
   if (tab === 'wx') {
+    stopQqCheck()
+    qqLoginStore.resetState()
     loadWxQRCode()
+  }
+  else if (tab === 'qq') {
+    stopWxCheck()
+    wxLoginStore.resetState()
+    loadQqQRCode()
   }
   else {
     stopWxCheck()
+    stopQqCheck()
     wxLoginStore.resetState()
+    qqLoginStore.resetState()
   }
 })
 </script>
@@ -342,42 +391,55 @@ watch(activeTab, (tab) => {
           </div>
         </div>
 
-        <!-- QQ 客户端捕获 Tab -->
+        <!-- QQ 扫码 Tab -->
         <div v-if="activeTab === 'qq'" class="space-y-4">
           <BaseInput
             v-model="qqAccountName"
             label="账号备注（可选）"
-            placeholder="捕获成功后可在账号列表修改"
+            placeholder="留空使用 QQ 昵称或号码"
           />
 
-          <div class="space-y-3 py-2">
-            <div class="rounded-lg p-3 text-sm leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
-              <div class="font-medium">
-                QQ 网页扫码接口已不可用，请使用服务器 QQ 客户端捕获。
-              </div>
-              <div class="mt-2 opacity-80">
-                在服务器桌面或 VNC 里打开 QQ，让用户扫码登录 QQ 客户端，然后打开 QQ经典农场。捕获服务会自动读取真实农场 code，并创建/启动账号。
-              </div>
+          <div class="flex flex-col items-center justify-center py-4 space-y-4">
+            <div
+              v-if="qqQrImageSrc"
+              class="border rounded-lg p-2"
+              :style="{ borderColor: 'color-mix(in srgb, var(--theme-text) 20%, transparent)', background: '#fff' }"
+            >
+              <img :src="qqQrImageSrc" class="h-48 w-48">
+            </div>
+            <div
+              v-else
+              class="h-48 w-48 flex items-center justify-center rounded-lg"
+              :style="{ background: 'color-mix(in srgb, var(--theme-bg) 90%, var(--theme-text))' }"
+            >
+              <div v-if="qqLoginStore.isLoading" i-svg-spinners-90-ring-with-bg class="text-3xl" :style="{ color: 'var(--theme-primary)' }" />
+              <span v-else class="text-sm" :style="{ color: 'var(--theme-text)' }">点击获取二维码</span>
             </div>
 
-            <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 88%, var(--theme-text))', color: 'var(--theme-text)' }">
-              <div>1. 服务器运行面板、捕获服务和 patch watcher。</div>
-              <div>2. 服务器 QQ 客户端扫码登录一次。</div>
-              <div>3. 打开 QQ经典农场，关闭后再打开一次。</div>
-              <div>4. 捕获成功后账号会自动出现并开始农场脚本。</div>
-            </div>
+            <p class="text-center text-sm" :style="{ color: 'var(--theme-text)' }">
+              {{ qqLoginStore.statusMessage }}
+            </p>
 
-            <BaseButton variant="primary" size="sm" @click="openQqCapturePage">
-              打开捕获入口
+            <p v-if="qqLoginStore.errorMessage" class="text-center text-sm text-red-600">
+              {{ qqLoginStore.errorMessage }}
+            </p>
+
+            <BaseButton variant="secondary" size="sm" :loading="qqLoginStore.isLoading" @click="loadQqQRCode">
+              刷新二维码
             </BaseButton>
 
-            <p class="break-all text-xs opacity-70" :style="{ color: 'var(--theme-text)' }">
-              {{ qqCaptureHttpUrl }}
+            <p v-if="qqLoginStore.qrUrl" class="break-all text-center text-xs opacity-60" :style="{ color: 'var(--theme-text)' }">
+              {{ qqLoginStore.qrUrl }}
             </p>
           </div>
 
-          <div class="text-center text-xs opacity-60" :style="{ color: 'var(--theme-text)' }">
-            不要再扫旧 QQ 网页授权二维码；它会返回 code=-3000。
+          <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
+            <div class="font-medium">
+              这里生成的是 QQ 登录授权二维码，不是打开农场的二维码。
+            </div>
+            <div class="mt-1 opacity-80">
+              手机 QQ 扫码确认后，系统会自动换取 QQ经典农场 code 并创建账号。如果腾讯返回校验失败，页面会直接显示接口返回原因。
+            </div>
           </div>
         </div>
 

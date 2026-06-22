@@ -440,32 +440,48 @@ function startAdminServer(dataProvider) {
     });
 
     // ============ QQ 扫码登录 API ============
-    app.post('/api/qr/create', async (req, res) => {
-        res.status(410).json({
-            ok: false,
-            error: 'QQ 网页扫码授权接口已不可用。请在服务器 QQ 客户端扫码登录后打开 QQ经典农场，由 code-capture 自动捕获真实 code。',
-        });
+    app.post('/api/qr/create', async (req, res, next) => {
+        if (process.env.FARM_DISABLE_WEB_QQ_QR === '1') return next();
+        try {
+            const data = await MiniProgramLoginSession.requestLoginCode();
+            return res.json({ ok: true, data });
+        } catch (e) {
+            adminLogger.warn('qq qr create failed', { error: e.message });
+            return res.status(500).json({ ok: false, error: `Get QQ QR code failed: ${e.message}` });
+        }
     });
 
-    app.post('/api/qr/check', async (req, res) => {
-        res.status(410).json({
-            ok: false,
-            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
-        });
+    app.post('/api/qr/check', async (req, res, next) => {
+        if (process.env.FARM_DISABLE_WEB_QQ_QR === '1') return next();
+        try {
+            const { code } = req.body || {};
+            if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
+            const data = await MiniProgramLoginSession.queryStatus(String(code));
+            return res.json({ ok: true, data });
+        } catch (e) {
+            adminLogger.warn('qq qr check failed', { error: e.message });
+            return res.status(500).json({ ok: false, error: `Check QQ QR status failed: ${e.message}` });
+        }
     });
 
     app.post('/api/qr/auth-code', async (req, res, next) => {
-        res.status(410).json({
-            ok: false,
-            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
-        });
-    });
-
-    app.post('/api/qr/auth-code', async (req, res) => {
-        res.status(410).json({
-            ok: false,
-            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
-        });
+        if (process.env.FARM_DISABLE_WEB_QQ_QR === '1') return next();
+        try {
+            const { ticket, appid } = req.body || {};
+            if (!ticket) return res.status(400).json({ ok: false, error: 'Missing ticket' });
+            const result = await MiniProgramLoginSession.getAuthCodeResult(String(ticket), appid || '1112386029');
+            if (!result || !result.ok || !result.code) {
+                return res.status(400).json({
+                    ok: false,
+                    error: (result && result.error) || 'QQ QR auth failed: no usable Farm code returned',
+                    data: result || null,
+                });
+            }
+            return res.json({ ok: true, data: { code: result.code } });
+        } catch (e) {
+            adminLogger.warn('qq qr auth-code failed', { error: e.message });
+            return res.status(500).json({ ok: false, error: `Exchange QQ Farm code failed: ${e.message}` });
+        }
     });
 
     const codeCaptureHandler = (req, res) => {
