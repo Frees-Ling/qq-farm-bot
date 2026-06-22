@@ -11,7 +11,19 @@ git rev-parse --short HEAD 2>/dev/null || true
 
 echo
 echo "== ports =="
-ss -lntp 2>/dev/null | grep -E ':3000|:9988' || true
+ss -lntp 2>/dev/null | grep -E ':3000|:9988|:8899' || true
+
+echo
+echo "== phone proxy capture =="
+if command -v mitmdump >/dev/null 2>&1; then
+  echo "mitmdump command: $(command -v mitmdump)"
+  mitmdump --version 2>/dev/null | sed -n '1,3p' || true
+else
+  echo "mitmdump command: not found"
+  echo "Install: python3 -m pip install --user mitmproxy"
+fi
+pgrep -af 'mitmdump|mitmproxy|mitm-qq-farm-code-capture' 2>/dev/null || true
+tail -n 80 logs/phone-code-capture.log 2>/dev/null || true
 
 echo
 echo "== desktop / qq =="
