@@ -135,6 +135,7 @@ const globalConfig = {
         apiUrl: '',
         appId: '',
         appKey: '',
+        callbackBaseUrl: '',
     },
     oauthUserDefault: {
         days: 30,
@@ -567,6 +568,7 @@ function loadGlobalConfig() {
                     apiUrl: String(data.oauth.apiUrl || '').trim(),
                     appId: String(data.oauth.appId || '').trim(),
                     appKey: String(data.oauth.appKey || '').trim(),
+                    callbackBaseUrl: String(data.oauth.callbackBaseUrl || '').trim(),
                 };
             }
 
@@ -989,8 +991,14 @@ function deleteUserOfflineReminder(username) {
 }
 
 // ============ 用户隔离的运行时连接配置 ============
+const LEGACY_CLIENT_VERSIONS = new Set([
+    '1.8.85.127',
+    '1.7.0.6_20260313',
+]);
+
 const DEFAULT_RUNTIME_CONFIG = {
     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
+    platform: 'qq',
     clientVersion: '1.12.1.6',
     os: 'iOS',
     osVersion: 'iOS 26.2.1',
@@ -999,11 +1007,19 @@ const DEFAULT_RUNTIME_CONFIG = {
     deviceId: 'iPhone X<iPhone18,3>',
 };
 
+function normalizeClientVersion(version) {
+    const value = String(version || '').trim();
+    if (!value) return DEFAULT_RUNTIME_CONFIG.clientVersion;
+    if (LEGACY_CLIENT_VERSIONS.has(value)) return DEFAULT_RUNTIME_CONFIG.clientVersion;
+    return value;
+}
+
 function normalizeRuntimeConfig(cfg) {
     const c = cfg || {};
     return {
         serverUrl: String(c.serverUrl || DEFAULT_RUNTIME_CONFIG.serverUrl).trim(),
-        clientVersion: String(c.clientVersion || DEFAULT_RUNTIME_CONFIG.clientVersion).trim(),
+        platform: String(c.platform || DEFAULT_RUNTIME_CONFIG.platform).trim(),
+        clientVersion: normalizeClientVersion(c.clientVersion),
         os: String(c.os || DEFAULT_RUNTIME_CONFIG.os).trim(),
         osVersion: String(c.osVersion || DEFAULT_RUNTIME_CONFIG.osVersion).trim(),
         networkType: String(c.networkType || DEFAULT_RUNTIME_CONFIG.networkType).trim(),
@@ -1137,6 +1153,7 @@ function addOrUpdateAccount(acc) {
             name: defaultName,
             code: acc.code || '',
             platform: acc.platform || 'qq',
+            loginType: acc.loginType || '',
             gid: acc.gid ? String(acc.gid) : '',
             openId: acc.openId ? String(acc.openId) : '',
             nick: acc.nick ? String(acc.nick) : '',
@@ -1211,6 +1228,7 @@ function setOAuthConfig(cfg) {
             apiUrl: String(cfg.apiUrl || '').trim(),
             appId: String(cfg.appId || '').trim(),
             appKey: String(cfg.appKey || '').trim(),
+            callbackBaseUrl: String(cfg.callbackBaseUrl || '').trim().replace(/\/+$/, ''),
         };
         saveGlobalConfig();
     }

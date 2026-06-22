@@ -302,7 +302,8 @@ function startAdminServer(dataProvider) {
 
         const protocol = req.protocol;
         const host = req.get('host');
-        const callbackUrl = `${protocol}://${host}/api/oauth/callback`;
+        const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || '').trim().replace(/\/+$/, '');
+        const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback`;
 
         const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
         const result = await oauth.login(type);
@@ -333,7 +334,8 @@ function startAdminServer(dataProvider) {
 
         const protocol = req.protocol;
         const host = req.get('host');
-        const callbackUrl = `${protocol}://${host}/api/oauth/callback`;
+        const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || '').trim().replace(/\/+$/, '');
+        const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback`;
 
         const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
         const result = await oauth.callback(code, type);
@@ -447,6 +449,7 @@ function startAdminServer(dataProvider) {
                     data: { code: result.code, url: result.url, image: result.image }
                 });
             } else {
+                return res.json({ ok: false, error: (result && result.error) || '获取 Code 失败' });
                 res.json({ ok: false, error: '获取二维码失败' });
             }
         } catch (e) {
@@ -465,13 +468,29 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    app.post('/api/qr/auth-code', async (req, res, next) => {
+        try {
+            const { ticket } = req.body || {};
+            if (!ticket) return res.status(400).json({ ok: false, error: 'Missing ticket' });
+            const result = await MiniProgramLoginSession.getAuthCodeResult(ticket, '1112386029');
+            if (result && result.ok && result.code) {
+                return res.json({ ok: true, data: { code: result.code } });
+            }
+            return res.json({ ok: false, error: (result && result.error) || 'Get farm code failed' });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     app.post('/api/qr/auth-code', async (req, res) => {
         try {
             const { ticket } = req.body || {};
             if (!ticket) return res.status(400).json({ ok: false, error: '缺少 ticket 参数' });
-            const code = await MiniProgramLoginSession.getAuthCode(ticket, '1112386029');
-            if (code) {
-                res.json({ ok: true, data: { code } });
+            const result = MiniProgramLoginSession.getAuthCodeResult
+                ? await MiniProgramLoginSession.getAuthCodeResult(ticket, '1112386029')
+                : { ok: true, code: await MiniProgramLoginSession.getAuthCode(ticket, '1112386029') };
+            if (result && result.ok && result.code) {
+                res.json({ ok: true, data: { code: result.code } });
             } else {
                 res.json({ ok: false, error: '获取 Code 失败' });
             }
@@ -480,8 +499,155 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    const codeCaptureHandler = (req, res) => {
+        try {
+            const body = (req.body && typeof req.body === 'object') ? req.body : {};
+            const code = String(req.query.code || body.code || '').trim();
+            if (!code) {
+                return res.status(400).json({ ok: false, error: 'Missing code' });
+            }
+            if (/^-\d+$/.test(code)) {
+                return res.status(400).json({ ok: false, error: 'Invalid code' });
+            }
+
+            const rawRef = String(body.accountId || body.id || req.query.accountId || req.query.id || '').trim();
+            const uin = String(body.uin || body.qq || req.query.uin || req.query.qq || '').trim();
+            const username = String(body.username || req.query.username || '').trim();
+            const name = String(body.name || req.query.name || '').trim();
+            const openId = String(body.openID || body.openid || req.query.openID || req.query.openid || '').trim();
+            const capturedPlatform = String(body.platform || req.query.platform || '').trim();
+            const capturedOs = String(body.os || req.query.os || '').trim();
+            const capturedVersion = String(body.ver || body.clientVersion || body.client_version || req.query.ver || req.query.clientVersion || req.query.client_version || '').trim();
+            const gid = openId;
+            const accountList = getAccountList();
+            const refKey = rawRef || uin;
+
+            const applyCapturedRuntimeConfig = (targetUsername) => {
+                if (!targetUsername || !store || typeof store.setRuntimeConfig !== 'function') return;
+                const next = {};
+                if (capturedPlatform) next.platform = capturedPlatform;
+                if (capturedOs) next.os = capturedOs;
+                if (capturedVersion) next.clientVersion = capturedVersion;
+                if (Object.keys(next).length === 0) return;
+                store.setRuntimeConfig(next, targetUsername);
+            };
+
+            const enableCapturedAccountAutomation = (accountId) => {
+                if (!accountId || !store || typeof store.applyConfigSnapshot !== 'function') return;
+                store.applyConfigSnapshot({
+                    automation: {
+                        farm: true,
+                        farm_push: true,
+                        clear_own_weed_bug: true,
+                        sell: true,
+                    },
+                }, { accountId: String(accountId) });
+            };
+
+            const activateAccount = (accountId, accountName = '') => {
+                const data = addOrUpdateAccount({
+                    id: String(accountId),
+                    code,
+                    uin,
+                    qq: uin,
+                    gid,
+                    openId,
+                    lastValidCodeAt: Date.now(),
+                });
+                applyCapturedRuntimeConfig(username || '');
+                enableCapturedAccountAutomation(accountId);
+                if (provider && provider.addAccountLog) {
+                    provider.addAccountLog('update', `抓包更新 code: ${accountName || accountId}`, String(accountId), accountName || '');
+                }
+                if (provider && provider.isAccountRunning && provider.isAccountRunning(String(accountId))) {
+                    if (provider.restartAccount) provider.restartAccount(String(accountId));
+                } else if (provider && provider.startAccount) {
+                    provider.startAccount(String(accountId));
+                }
+                return data;
+            };
+
+            if (refKey) {
+                const existing = findAccountByRef(accountList, refKey);
+                if (existing && existing.id) {
+                    activateAccount(existing.id, existing.name || '');
+                    return res.json({ ok: true, data: { action: 'updated', accountId: String(existing.id), name: existing.name || '' } });
+                }
+                if (!username) {
+                    return res.status(404).json({ ok: false, error: `No account matched ${refKey}; add username=your-login-name to create one` });
+                }
+            }
+
+            if (username) {
+                const userAccounts = getAccountList(username).filter(a => !a.deletedAt);
+                let target = null;
+                if (gid) {
+                    target = userAccounts.find(a => String(a.gid || a.openId || '') === gid);
+                }
+                if (!target && uin) {
+                    target = userAccounts.find(a => String(a.uin || a.qq || '') === uin);
+                }
+                if (!target && !gid && !uin) {
+                    target = [...userAccounts]
+                        .filter(a => String(a.loginType || '') === 'code_capture')
+                        .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0))[0] || null;
+                }
+                if (target && target.id) {
+                    activateAccount(target.id, target.name || '');
+                    return res.json({ ok: true, data: { action: 'updated', accountId: String(target.id), name: target.name || '' } });
+                }
+
+                const newName = name || (uin ? `QQ${uin}` : `抓包账号_${Date.now()}`);
+                const data = addOrUpdateAccount({
+                    name: newName,
+                    code,
+                    platform: capturedPlatform || 'qq',
+                    loginType: 'code_capture',
+                    username,
+                    uin,
+                    qq: uin,
+                    gid,
+                    openId,
+                    lastValidCodeAt: Date.now(),
+                });
+                applyCapturedRuntimeConfig(username);
+                const created = [...(data.accounts || [])].reverse().find(a =>
+                    String(a.username || '') === username
+                    && String(a.code || '') === code
+                    && String(a.name || '') === newName
+                );
+                if (created && created.id) {
+                    enableCapturedAccountAutomation(created.id);
+                }
+                if (created && provider && provider.startAccount) {
+                    provider.startAccount(String(created.id));
+                }
+                return res.json({ ok: true, data: { action: 'created', accountId: created ? String(created.id) : '', name: newName } });
+            }
+
+            const activeAccounts = accountList.filter(a => !a.deletedAt);
+            if (activeAccounts.length === 1) {
+                const only = activeAccounts[0];
+                activateAccount(only.id, only.name || '');
+                return res.json({ ok: true, data: { action: 'updated', accountId: String(only.id), name: only.name || '' } });
+            }
+
+            return res.status(404).json({
+                ok: false,
+                error: activeAccounts.length > 1
+                    ? 'Multiple accounts found; add accountId, uin, or username to the capture URL'
+                    : 'No accounts found; add username to the capture URL to create one',
+            });
+        } catch (e) {
+            adminLogger.error('code-capture failed', { error: e.message, stack: e.stack });
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    };
+    app.get('/api/code-capture', codeCaptureHandler);
+    app.post('/api/code-capture', codeCaptureHandler);
+
     app.use('/api', (req, res, next) => {
-        if (req.path === '/login' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth') return next();
+        if (req.path === '/login' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth') return next();
         return authRequired(req, res, next);
     });
 
@@ -531,7 +697,7 @@ function startAdminServer(dataProvider) {
         res.json({ ok: true });
     });
 
-    const getAccountList = (username = null) => {
+    function getAccountList(username = null) {
         try {
             if (provider && typeof provider.getAccounts === 'function') {
                 const data = provider.getAccounts();
@@ -553,7 +719,7 @@ function startAdminServer(dataProvider) {
             accounts = accounts.filter(a => a.username === username);
         }
         return accounts;
-    };
+    }
 
     // 检查用户是否有权访问指定账号
     const checkAccountAccess = (req, accountId) => {
@@ -1994,12 +2160,13 @@ function startAdminServer(dataProvider) {
     // 更新OAuth配置（仅管理员）
     app.post('/api/admin/oauth', authRequired, adminRequired, (req, res) => {
         try {
-            const { enabled, apiUrl, appId, appKey } = req.body || {};
+            const { enabled, apiUrl, appId, appKey, callbackBaseUrl } = req.body || {};
             const config = store.setOAuthConfig({
                 enabled: !!enabled,
                 apiUrl: String(apiUrl || '').trim(),
                 appId: String(appId || '').trim(),
                 appKey: String(appKey || '').trim(),
+                callbackBaseUrl: String(callbackBaseUrl || '').trim(),
             });
             res.json({ ok: true, data: config });
         } catch (e) {
@@ -2223,6 +2390,9 @@ function startAdminServer(dataProvider) {
 
             const incomingCode = String(payload.code || '').trim();
             const manualPlatform = String(payload.platform || 'qq').trim().toLowerCase();
+            if (incomingCode && /^-\d+$/.test(incomingCode)) {
+                return res.status(400).json({ ok: false, error: '无效登录 Code，请重新扫码获取。' });
+            }
 
             let basicProfile = null;
             if (incomingCode && manualPlatform === 'qq') {

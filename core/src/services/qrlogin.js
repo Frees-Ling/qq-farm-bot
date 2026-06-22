@@ -203,7 +203,7 @@ class MiniProgramLoginSession {
         }
     }
 
-    static async getAuthCode(ticket, appid = '1112386029') {
+    static async getAuthCodeResult(ticket, appid = '1112386029') {
         try {
             const response = await axios.post('https://q.qq.com/ide/login', {
                 appid,
@@ -212,14 +212,30 @@ class MiniProgramLoginSession {
                 headers: this.getHeaders()
             });
 
-            if (response.status !== 200) return '';
+            if (response.status !== 200) {
+                return { ok: false, code: '', error: `QQ授权接口异常: HTTP ${response.status}` };
+            }
 
-            const { code } = response.data;
-            return code || '';
+            const { code, msg, message } = response.data || {};
+            const authCode = String(code || '').trim();
+            if (!authCode || /^-\d+$/.test(authCode)) {
+                const reason = String(msg || message || '校验失败').trim();
+                return {
+                    ok: false,
+                    code: '',
+                    error: `QQ扫码授权失败: code=${authCode || 'empty'} ${reason}。QQ扫码登录接口已不可用，请用手机抓包获取 wss://gate-obt.nqf.qq.com 请求里的 code 参数后手动添加账号。`,
+                };
+            }
+            return { ok: true, code: authCode, error: '' };
         } catch (error) {
             console.error('MP Get Auth Code Error:', error.message);
-            return '';
+            return { ok: false, code: '', error: `QQ授权请求失败: ${error.message}` };
         }
+    }
+
+    static async getAuthCode(ticket, appid = '1112386029') {
+        const result = await this.getAuthCodeResult(ticket, appid);
+        return result && result.ok ? result.code : '';
     }
 }
 

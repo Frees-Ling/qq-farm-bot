@@ -179,7 +179,7 @@ const passwordForm = ref({
 const runtimeConfigSaving = ref(false)
 const localRuntimeConfig = ref({
   serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
-  clientVersion: '1.7.0.6_20260313',
+  clientVersion: '1.12.1.6',
   os: 'iOS',
   osVersion: 'iOS 26.2.1',
   networkType: 'wifi',
@@ -737,7 +737,7 @@ async function handleTestOffline() {
                 v-model="localRuntimeConfig.clientVersion"
                 label="游戏版本号"
                 type="text"
-                placeholder="1.7.0.6_20260313"
+                placeholder="1.12.1.6"
               />
             </div>
 

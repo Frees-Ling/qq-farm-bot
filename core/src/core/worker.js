@@ -448,8 +448,16 @@ async function startBot(config) {
     // 应用运行时连接配置（客户端版本、服务器地址等，覆盖 config.js 的硬编码值）
     if (runtimeConfig && typeof runtimeConfig === 'object') {
         if (runtimeConfig.serverUrl) CONFIG.serverUrl = String(runtimeConfig.serverUrl).trim();
+        if (runtimeConfig.platform) CONFIG.platform = String(runtimeConfig.platform).trim();
         if (runtimeConfig.clientVersion) CONFIG.clientVersion = String(runtimeConfig.clientVersion).trim();
         if (runtimeConfig.os) CONFIG.os = String(runtimeConfig.os).trim();
+        CONFIG.device_info = {
+            client_version: CONFIG.clientVersion,
+            sys_software: String(runtimeConfig.osVersion || '').trim() || `${CONFIG.os} 26.2.1`,
+            network: String(runtimeConfig.networkType || '').trim() || 'wifi',
+            memory: String(runtimeConfig.memory || '').trim() || '7672',
+            device_id: String(runtimeConfig.deviceId || '').trim() || 'iPhone X<iPhone18,3>',
+        };
     }
 
     // 注意：间隔配置由 applyIntervalsToRuntime 统一处理，不要在这里覆盖

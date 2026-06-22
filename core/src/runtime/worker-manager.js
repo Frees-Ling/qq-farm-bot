@@ -58,6 +58,16 @@ function createWorkerManager(options) {
 
     function startWorker(account) {
         if (!account || !account.id) return false;
+        if (/^-\d+$/.test(String(account.code || '').trim())) {
+            log('错误', `账号 ${account.name} 登录 Code 无效，请重新扫码获取`, {
+                accountId: String(account.id),
+                accountName: account.name,
+            });
+            addAccountLog('start_failed', `账号 ${account.name} 登录 Code 无效，请重新扫码获取`, account.id, account.name, {
+                reason: 'invalid_login_code',
+            });
+            return false;
+        }
         if (workers[account.id]) return false; // 已运行
 
         log('系统', `正在启动账号: ${account.name}`, { accountId: String(account.id), accountName: account.name });

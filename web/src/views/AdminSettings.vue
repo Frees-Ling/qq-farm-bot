@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { Card } from '@/stores/user'
 import { computed, onMounted, ref } from 'vue'
 import api from '@/api'
@@ -86,6 +86,7 @@ const oauthConfig = ref({
   apiUrl: '',
   appId: '',
   appKey: '',
+  callbackBaseUrl: '',
 })
 const oauthSaving = ref(false)
 
@@ -895,13 +896,14 @@ onMounted(() => {
       </h2>
 
       <div class="rounded-lg bg-white p-4 shadow space-y-4 dark:bg-gray-800">
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-4 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-5 md:grid-cols-2">
           <div class="flex items-center">
             <BaseSwitch v-model="oauthConfig.enabled" label="启用QQ登录" />
           </div>
           <BaseInput v-model="oauthConfig.apiUrl" label="接口地址" placeholder="如 https://u.daib.cn/" />
           <BaseInput v-model="oauthConfig.appId" label="App ID" placeholder="应用ID" />
           <BaseInput v-model="oauthConfig.appKey" label="App Key" type="password" placeholder="应用密钥" />
+          <BaseInput v-model="oauthConfig.callbackBaseUrl" label="回调地址" placeholder="http://38.246.244.203" />
         </div>
         <div class="flex items-center justify-between">
           <p class="text-xs text-gray-500 dark:text-gray-400">
