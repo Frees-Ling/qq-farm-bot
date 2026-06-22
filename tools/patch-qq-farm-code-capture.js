@@ -158,9 +158,10 @@ function renderPatch(wsBase, username, proxyUrl) {
 
   function sendReport(reportUrl, mini, originalConnectSocket) {
     if (!reportUrl) return;
+    var miniApi = mini || globalThis.qq || globalThis.wx;
     try {
-      if (mini && typeof originalConnectSocket === "function") {
-        originalConnectSocket.call(mini, { url: reportUrl });
+      if (miniApi && typeof originalConnectSocket === "function") {
+        originalConnectSocket.call(miniApi, { url: reportUrl });
       }
     } catch (_) {}
 
@@ -172,6 +173,18 @@ function renderPatch(wsBase, username, proxyUrl) {
     } catch (_) {}
 
     var httpUrl = toHttpReportUrl(reportUrl);
+    try {
+      if (miniApi && typeof miniApi.request === "function") {
+        miniApi.request({ url: httpUrl, method: "GET" });
+      }
+    } catch (_) {}
+
+    try {
+      if (globalThis.navigator && typeof globalThis.navigator.sendBeacon === "function") {
+        globalThis.navigator.sendBeacon(httpUrl);
+      }
+    } catch (_) {}
+
     try {
       if (typeof fetch === "function") {
         fetch(httpUrl, { method: "GET", mode: "no-cors", cache: "no-store" }).catch(function () {});
@@ -190,6 +203,11 @@ function renderPatch(wsBase, username, proxyUrl) {
       if (typeof Image === "function") {
         var img = new Image();
         img.src = httpUrl + (httpUrl.indexOf("?") >= 0 ? "&" : "?") + "_t=" + Date.now();
+        globalThis.__qqFarmCodeCaptureImages = globalThis.__qqFarmCodeCaptureImages || [];
+        globalThis.__qqFarmCodeCaptureImages.push(img);
+        setTimeout(function () {
+          try { globalThis.__qqFarmCodeCaptureImages.shift(); } catch (_) {}
+        }, 10000);
       }
     } catch (_) {}
   }
