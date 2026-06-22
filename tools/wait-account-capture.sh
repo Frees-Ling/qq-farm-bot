@@ -22,16 +22,20 @@ fi
 
 if ! command -v qq >/dev/null 2>&1; then
   cat <<EOF
-Linux QQ is not installed on this server, so QR login cannot create a QQ Farm account here yet.
+Linux QQ was not found in this shell's PATH.
 
-Install the Ubuntu desktop + Linux QQ + bot services first:
+If Linux QQ is already installed, set its command path before rerunning:
+  export PATH="/path/to/linux-qq/bin:\$PATH"
+
+If it is not installed, install it first:
   sudo bash tools/setup-ubuntu-qq-desktop.sh
-  sudo -u root vncpasswd
-  bash tools/start-ubuntu-qq-desktop.sh
 
-Then connect to VNC, scan the QQ login QR, and rerun:
+Then make sure Linux QQ is logged in on the server desktop and rerun:
   sudo bash tools/wait-account-capture.sh $USERNAME
   sudo bash tools/wait-account-capture.sh $USERNAME '<proxyUrl>'
+
+For an existing non-VNC desktop session, you can specify:
+  sudo FARM_DISPLAY=:0 FARM_DESKTOP_USER='<desktop-user>' bash tools/wait-account-capture.sh $USERNAME
 
 If you already have a real wss code, use:
   node tools/add-account-code.js --username '$USERNAME' --code '<REAL_CODE>'
@@ -59,8 +63,10 @@ print_state() {
   if command -v systemctl >/dev/null 2>&1; then
     systemctl is-active qq-farm-bot.service qq-farm-code-capture.service qq-farm-code-patcher.service 2>/dev/null || true
   fi
-  echo "-- QQ / VNC processes --"
-  pgrep -af 'QQ|qq|vnc|Xvnc|xfce' 2>/dev/null || true
+  echo "-- QQ / desktop processes --"
+  pgrep -af 'QQ|qq|vnc|Xvnc|xfce|gnome|kde|wayland|Xorg' 2>/dev/null || true
+  echo "-- display env --"
+  echo "DISPLAY=${FARM_DISPLAY:-${DISPLAY:-}} FARM_DESKTOP_USER=${FARM_DESKTOP_USER:-} FARM_XAUTHORITY=${FARM_XAUTHORITY:-}"
   echo "-- QQ Farm game.js --"
   find /root /home -path '*miniapp_src*1112386029*game.js' -type f 2>/dev/null | tail -n 5 || true
   echo "-- recent capture log --"
@@ -101,8 +107,8 @@ open_farm() {
 
 cat <<EOF
 
-Now use the server VNC desktop:
-  1. Make sure QQ is open and logged in by this user scanning the QQ QR.
+Now use the server Linux desktop:
+  1. Make sure Linux QQ is open and logged in by this user scanning the QQ QR on the server desktop.
   2. This script will try to open QQ Classic Farm automatically with mqqapi and web links.
   3. If Farm does not appear in QQ, open QQ Classic Farm manually once.
 

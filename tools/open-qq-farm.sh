@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VNC_USER="${FARM_VNC_USER:-${SUDO_USER:-$(id -un)}}"
-DISPLAY_NUM="${FARM_VNC_DISPLAY:-1}"
-DISPLAY_VALUE=":${DISPLAY_NUM}"
+DESKTOP_USER="${FARM_DESKTOP_USER:-${FARM_VNC_USER:-${SUDO_USER:-$(id -un)}}}"
+DISPLAY_VALUE="${FARM_DISPLAY:-${DISPLAY:-:${FARM_VNC_DISPLAY:-0}}}"
+XAUTHORITY_VALUE="${FARM_XAUTHORITY:-}"
 FARM_MINIAPP_APPID="${FARM_MINIAPP_APPID:-1112386029}"
 FARM_OPEN_SCENE="${FARM_OPEN_SCENE:-1001}"
 FARM_OPEN_URL="${FARM_OPEN_URL:-https://m.q.qq.com/a/s/07f019703b54ceb96f9ead1379984a25}"
@@ -11,13 +11,13 @@ FARM_OPEN_SCHEME="${FARM_OPEN_SCHEME:-mqqapi://microapp/open?mini_appid=${FARM_M
 OUT_LOG="${FARM_OPEN_OUT_LOG:-/tmp/qq-farm-open.out}"
 ERR_LOG="${FARM_OPEN_ERR_LOG:-/tmp/qq-farm-open.err}"
 
-if [ "$(id -u)" -eq 0 ]; then
-  RUN_AS=(sudo -u "$VNC_USER")
+if [ "$(id -u)" -eq 0 ] && [ -n "$DESKTOP_USER" ] && [ "$DESKTOP_USER" != "root" ]; then
+  RUN_AS=(sudo -u "$DESKTOP_USER")
 else
   RUN_AS=()
 fi
 
-echo "Opening QQ Farm URL on DISPLAY=$DISPLAY_VALUE as user=$VNC_USER"
+echo "Opening QQ Farm URL on DISPLAY=$DISPLAY_VALUE as user=$DESKTOP_USER"
 echo "Scheme: $FARM_OPEN_SCHEME"
 echo "URL: $FARM_OPEN_URL"
 
@@ -27,7 +27,11 @@ launch() {
   if ! command -v "$command_name" >/dev/null 2>&1; then
     return 1
   fi
-  "${RUN_AS[@]}" env DISPLAY="$DISPLAY_VALUE" "$command_name" "$@" >>"$OUT_LOG" 2>>"$ERR_LOG" &
+  if [ -n "$XAUTHORITY_VALUE" ]; then
+    "${RUN_AS[@]}" env DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" "$command_name" "$@" >>"$OUT_LOG" 2>>"$ERR_LOG" &
+  else
+    "${RUN_AS[@]}" env DISPLAY="$DISPLAY_VALUE" "$command_name" "$@" >>"$OUT_LOG" 2>>"$ERR_LOG" &
+  fi
   return 0
 }
 
