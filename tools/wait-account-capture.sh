@@ -84,7 +84,7 @@ cat <<EOF
 
 Now use the server VNC desktop:
   1. Make sure QQ is open and logged in by this user scanning the QQ QR.
-  2. This script will try to open QQ Classic Farm automatically.
+  2. This script will try to open QQ Classic Farm automatically with mqqapi and web links.
   3. If Farm does not appear in QQ, open QQ Classic Farm manually once.
 
 Waiting up to ${TIMEOUT_SEC}s for:
