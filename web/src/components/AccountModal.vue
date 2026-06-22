@@ -483,15 +483,15 @@ watch(activeTab, (tab) => {
           <div class="space-y-3 rounded-lg p-3" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 88%, var(--theme-text))' }">
             <BaseTextarea
               v-model="qqCapturedCodeText"
-              label="真实农场 code / wss 链接"
-              placeholder="粘贴 wss://gate-obt.nqf.qq.com/prod/ws?...&code=xxx 或直接粘贴 code"
+              label="真实农场 code / 抓包到的 wss 请求"
+              placeholder="不用打开 wss。复制抓包记录里的 wss://gate-obt.nqf.qq.com/prod/ws?...&code=xxx，或只粘贴 code"
               :rows="3"
             />
             <BaseButton variant="primary" size="sm" :loading="loading" @click="submitQqCapturedCode">
               用这个 code 创建 QQ 账号
             </BaseButton>
             <p class="text-xs leading-5 opacity-70" :style="{ color: 'var(--theme-text)' }">
-              网页 QQ 扫码返回 -3000 时，只有小程序实际连接 gate-obt 时产生的 code 才能登录农场。
+              wss 不是网页，浏览器打不开是正常的。这里只需要复制小程序请求里的 code 参数；网页 QQ 扫码返回 -3000 时，只有小程序实际连接 gate-obt 时产生的 code 才能登录农场。
             </p>
           </div>
         </div>
