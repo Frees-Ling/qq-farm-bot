@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { createModuleLogger } = require('./logger');
@@ -9,6 +11,33 @@ const addonPath = path.join(rootDir, 'tools/mitm-qq-farm-code-capture.py');
 
 const sessions = new Map();
 let activeSessionId = '';
+
+function findMitmdump() {
+    const explicit = String(process.env.MITMDUMP_BIN || '').trim();
+    if (explicit) return explicit;
+
+    const names = process.platform === 'win32' ? ['mitmdump.exe', 'mitmdump.cmd', 'mitmdump'] : ['mitmdump'];
+    const dirs = [
+        ...String(process.env.PATH || '').split(path.delimiter),
+        path.join(os.homedir(), '.local/bin'),
+        '/root/.local/bin',
+        '/usr/local/bin',
+        '/usr/bin',
+        '/bin',
+    ].filter(Boolean);
+
+    for (const dir of dirs) {
+        for (const name of names) {
+            const candidate = path.join(dir, name);
+            try {
+                if (fs.existsSync(candidate)) return candidate;
+            } catch {
+                // ignore unreadable PATH entries
+            }
+        }
+    }
+    return 'mitmdump';
+}
 
 function publicSession(session) {
     if (!session) return null;
@@ -43,7 +72,7 @@ function startCapture(options = {}) {
     const panelApi = String(options.panelApi || 'http://127.0.0.1:3000/api/code-capture').trim();
     const port = Number.parseInt(String(options.port || process.env.FARM_PHONE_PROXY_PORT || '8899'), 10) || 8899;
     const listenHost = String(options.listenHost || process.env.FARM_PHONE_PROXY_LISTEN_HOST || '0.0.0.0');
-    const mitmdump = String(process.env.MITMDUMP_BIN || 'mitmdump');
+    const mitmdump = findMitmdump();
 
     if (activeSessionId) {
         const active = sessions.get(activeSessionId);
@@ -107,7 +136,7 @@ function startCapture(options = {}) {
         proc.on('error', (error) => {
             session.status = 'error';
             session.message = error.code === 'ENOENT'
-                ? '服务器未安装 mitmproxy，请联系管理员'
+                ? '服务器找不到 mitmdump，请安装 mitmproxy 或设置 MITMDUMP_BIN'
                 : error.message;
             session.updatedAt = Date.now();
             logger.warn('phone capture spawn failed', { error: error.message });
