@@ -130,7 +130,7 @@ function renderPatch(wsBase, username, proxyUrl) {
     return text.indexOf("gate-obt.nqf.qq.com") >= 0 && text.indexOf("/prod/ws") >= 0;
   }
 
-  function report(rawUrl, mini, originalConnectSocket) {
+  function buildReportUrl(rawUrl) {
     if (!isFarmGateUrl(rawUrl)) return;
     var code = getParam(rawUrl, "code");
     var seenKey = code + "|" + defaultUsername;
@@ -146,7 +146,11 @@ function renderPatch(wsBase, username, proxyUrl) {
     reportUrl = appendParam(reportUrl, "os", getParam(rawUrl, "os"));
     reportUrl = appendParam(reportUrl, "ver", getParam(rawUrl, "ver") || getParam(rawUrl, "client_version"));
     reportUrl = appendParam(reportUrl, "openID", getParam(rawUrl, "openID") || getParam(rawUrl, "openid"));
+    return reportUrl;
+  }
 
+  function sendReport(reportUrl, mini, originalConnectSocket) {
+    if (!reportUrl) return;
     try {
       if (mini && typeof originalConnectSocket === "function") {
         originalConnectSocket.call(mini, { url: reportUrl });
@@ -162,7 +166,11 @@ function renderPatch(wsBase, username, proxyUrl) {
     } catch (_) {}
   }
 
-  function installOnce() {
+  function report(rawUrl, mini, originalConnectSocket) {
+    sendReport(buildReportUrl(rawUrl), mini, originalConnectSocket);
+  }
+
+  function installConnectSocket() {
     var mini = globalThis.qq || globalThis.wx;
     if (!mini || typeof mini.connectSocket !== "function") return false;
     var originalConnectSocket = mini.__qqFarmCodeCaptureOriginalConnectSocket || mini.connectSocket;
@@ -180,10 +188,40 @@ function renderPatch(wsBase, username, proxyUrl) {
     return true;
   }
 
+  function installWebSocket() {
+    if (typeof globalThis.WebSocket !== "function") return false;
+    var OriginalWebSocket = globalThis.__qqFarmCodeCaptureOriginalWebSocket || globalThis.WebSocket;
+    globalThis.WebSocket = function (url, protocols) {
+      try {
+        sendReport(buildReportUrl(String(url || "")), null, null);
+      } catch (_) {}
+      if (arguments.length > 1) return new OriginalWebSocket(url, protocols);
+      return new OriginalWebSocket(url);
+    };
+    try {
+      globalThis.WebSocket.prototype = OriginalWebSocket.prototype;
+      Object.setPrototypeOf(globalThis.WebSocket, OriginalWebSocket);
+      globalThis.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+      globalThis.WebSocket.OPEN = OriginalWebSocket.OPEN;
+      globalThis.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+      globalThis.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+    } catch (_) {}
+    globalThis.__qqFarmCodeCaptureOriginalWebSocket = OriginalWebSocket;
+    try { console.log("[qq-farm-code-capture] WebSocket patched for " + defaultUsername); } catch (_) {}
+    return true;
+  }
+
+  function installOnce() {
+    var a = installConnectSocket();
+    var b = installWebSocket();
+    return a || b;
+  }
+
   var tries = 0;
   var timer = setInterval(function () {
     tries += 1;
-    if (installOnce() || tries > 400) clearInterval(timer);
+    if (installOnce() && tries > 20) clearInterval(timer);
+    if (tries > 2400) clearInterval(timer);
   }, 50);
   installOnce();
 })();
