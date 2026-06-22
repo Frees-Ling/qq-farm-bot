@@ -101,7 +101,7 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
   const result = await qqLoginStore.checkLogin()
   if (result.success && result.ticket) {
     stopQqCheck()
-    const codeResult = await qqLoginStore.getFarmCode(result.ticket)
+    const codeResult = await qqLoginStore.getFarmCode(result.ticket, { quietFailure: true })
     if (codeResult.success && codeResult.code) {
       const name = qqAccountName.value.trim() || result.nickname || (result.uin ? `QQ${result.uin}` : `QQ账号${Date.now()}`)
       await addAccount({
@@ -118,13 +118,25 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
   }
 }, 2000, { immediate: false })
 
+const { pause: stopQqCaptureCheck, resume: startQqCaptureCheck } = useIntervalFn(async () => {
+  const result = await qqLoginStore.checkPhoneCapture()
+  if (result.success) {
+    stopQqCaptureCheck()
+    emit('saved')
+    close()
+  }
+}, 2000, { immediate: false })
+
 async function loadQqQRCode() {
   if (activeTab.value !== 'qq')
     return
   qqLoginStore.resetState()
   const success = await qqLoginStore.getQRCode()
-  if (success)
+  if (success) {
+    await qqLoginStore.startPhoneCapture(qqAccountName.value.trim())
+    startQqCaptureCheck()
     startQqCheck()
+  }
 }
 
 // 保存微信配置
@@ -226,6 +238,8 @@ const qqQrImageSrc = computed(() => {
 function close() {
   stopWxCheck()
   stopQqCheck()
+  stopQqCaptureCheck()
+  qqLoginStore.stopPhoneCapture()
   wxLoginStore.resetState()
   qqLoginStore.resetState()
   emit('close')
@@ -254,6 +268,8 @@ watch(() => props.show, (newVal) => {
   else {
     stopWxCheck()
     stopQqCheck()
+    stopQqCaptureCheck()
+    qqLoginStore.stopPhoneCapture()
     wxLoginStore.resetState()
     qqLoginStore.resetState()
   }
@@ -273,6 +289,8 @@ watch(activeTab, (tab) => {
   else {
     stopWxCheck()
     stopQqCheck()
+    stopQqCaptureCheck()
+    qqLoginStore.stopPhoneCapture()
     wxLoginStore.resetState()
     qqLoginStore.resetState()
   }
@@ -434,10 +452,7 @@ watch(activeTab, (tab) => {
               使用手机 QQ 扫码确认登录。
             </div>
             <div class="mt-1 opacity-80">
-              确认后请保持页面打开，系统会自动尝试创建账号。
-            </div>
-            <div v-if="qqLoginStore.diagnosticMessage" class="mt-2 break-all opacity-70">
-              {{ qqLoginStore.diagnosticMessage }}
+              确认后请立刻在手机 QQ 打开 QQ经典农场一次，页面会自动等待并创建账号。
             </div>
           </div>
         </div>

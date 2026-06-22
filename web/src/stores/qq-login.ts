@@ -5,7 +5,7 @@ import api from '@/api'
 import { getErrorMessage } from '@/api/error'
 import { unwrapOk } from '@/api/result'
 
-type QqLoginStatus = 'idle' | 'loading' | 'ready' | 'scanning' | 'confirming' | 'success' | 'error'
+type QqLoginStatus = 'idle' | 'loading' | 'ready' | 'scanning' | 'confirming' | 'farm_waiting' | 'success' | 'error'
 
 export interface QqCheckResult {
   success: boolean
@@ -24,6 +24,8 @@ export const useQqLoginStore = defineStore('qq-login', () => {
   const statusMessage = ref('')
   const errorMessage = ref('')
   const diagnosticMessage = ref('')
+  const captureSessionId = ref('')
+  const captureStatus = ref('')
 
   function setDiagnostic(stage: string, detail: Record<string, any>) {
     const safeDetail = { ...detail }
@@ -42,6 +44,8 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     statusMessage.value = ''
     errorMessage.value = ''
     diagnosticMessage.value = ''
+    captureSessionId.value = ''
+    captureStatus.value = ''
   }
 
   async function getQRCode(): Promise<boolean> {
@@ -130,7 +134,73 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     }
   }
 
-  async function getFarmCode(ticket: string): Promise<{ success: boolean, code?: string }> {
+  async function startPhoneCapture(accountName = '') {
+    captureSessionId.value = ''
+    captureStatus.value = ''
+    try {
+      const res = await api.post('/api/qq-phone-capture/start', { name: accountName }, { silent: true })
+      const data = unwrapOk<any>(res.data as ApiResult<any>, '启动 QQ 农场监听失败')
+      captureSessionId.value = String(data.sessionId || '')
+      captureStatus.value = String(data.status || '')
+      return true
+    }
+    catch (e: any) {
+      errorMessage.value = '服务器监听未启动，请联系管理员'
+      setDiagnostic('phone-capture-start-error', {
+        error: getErrorMessage(e, '服务器监听启动失败'),
+      })
+      return false
+    }
+  }
+
+  async function checkPhoneCapture(): Promise<{ success: boolean, accountId?: string, status?: string }> {
+    if (!captureSessionId.value)
+      return { success: false }
+    try {
+      const res = await api.get('/api/qq-phone-capture/status', {
+        params: { sessionId: captureSessionId.value },
+        silent: true,
+      })
+      const data = unwrapOk<any>(res.data as ApiResult<any>, '查询 QQ 农场监听失败')
+      captureStatus.value = String(data.status || '')
+      if (data.status === 'complete') {
+        status.value = 'success'
+        statusMessage.value = '账号已创建'
+        errorMessage.value = ''
+        return { success: true, accountId: data.accountId || '', status: data.status }
+      }
+      if (data.status === 'error') {
+        status.value = 'error'
+        errorMessage.value = data.message || '服务器监听异常，请联系管理员'
+      }
+      return { success: false, status: data.status || '' }
+    }
+    catch (e: any) {
+      setDiagnostic('phone-capture-status-error', {
+        error: getErrorMessage(e, '查询监听状态失败'),
+      })
+      return { success: false }
+    }
+  }
+
+  async function stopPhoneCapture() {
+    if (!captureSessionId.value)
+      return
+    try {
+      await api.post('/api/qq-phone-capture/stop', { sessionId: captureSessionId.value }, { silent: true })
+    }
+    catch {
+      // ignore cleanup failures
+    }
+  }
+
+  function waitForFarmOpen() {
+    status.value = 'farm_waiting'
+    statusMessage.value = '扫码确认成功，现在打开手机 QQ 经典农场一次'
+    errorMessage.value = ''
+  }
+
+  async function getFarmCode(ticket: string, options: { quietFailure?: boolean } = {}): Promise<{ success: boolean, code?: string }> {
     if (!ticket)
       return { success: false }
 
@@ -154,8 +224,13 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       return { success: true, code: data.code }
     }
     catch (e: any) {
-      status.value = 'error'
-      errorMessage.value = getErrorMessage(e, '换取 QQ 农场 code 失败')
+      if (options.quietFailure) {
+        waitForFarmOpen()
+      }
+      else {
+        status.value = 'error'
+        errorMessage.value = getErrorMessage(e, '换取 QQ 农场 code 失败')
+      }
       const payload = e?.response?.data
       const detail = payload?.data || payload || {}
       setDiagnostic('auth-code-error', {
@@ -179,9 +254,15 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     statusMessage,
     errorMessage,
     diagnosticMessage,
+    captureSessionId,
+    captureStatus,
     resetState,
     getQRCode,
     checkLogin,
+    startPhoneCapture,
+    checkPhoneCapture,
+    stopPhoneCapture,
+    waitForFarmOpen,
     getFarmCode,
   }
 })

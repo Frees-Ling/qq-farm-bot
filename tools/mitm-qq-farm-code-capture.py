@@ -11,6 +11,8 @@ from mitmproxy import ctx
 TARGET_HOST = os.environ.get("FARM_MITM_TARGET_HOST", "gate-obt.nqf.qq.com")
 TARGET_PATH = os.environ.get("FARM_MITM_TARGET_PATH", "/prod/ws")
 USERNAME = os.environ.get("FARM_CAPTURE_USERNAME", "admin")
+ACCOUNT_NAME = os.environ.get("FARM_CAPTURE_ACCOUNT_NAME", "")
+SESSION_ID = os.environ.get("FARM_CAPTURE_SESSION_ID", "")
 PANEL_API = os.environ.get("FARM_PANEL_API", "http://127.0.0.1:3000/api/code-capture")
 LOG_PATH = os.environ.get("FARM_CAPTURE_LOG", "")
 ONESHOT = os.environ.get("FARM_CAPTURE_ONESHOT", "1").lower() in ("1", "true", "yes", "on")
@@ -52,6 +54,10 @@ def forward_code(code, params):
         f"&username={urllib.parse.quote(USERNAME)}"
         "&platform=qq"
     )
+    if ACCOUNT_NAME:
+        api += f"&name={urllib.parse.quote(ACCOUNT_NAME)}"
+    if SESSION_ID:
+        api += f"&captureSession={urllib.parse.quote(SESSION_ID)}"
 
     uin = first(params, "uin", "qq")
     openid = first(params, "openID", "openid")
@@ -82,7 +88,7 @@ class QQFarmCodeCapture:
     def load(self, _loader):
         write_log(
             f"phone proxy capture loaded target={TARGET_HOST}{TARGET_PATH} "
-            f"username={USERNAME} panel={PANEL_API} oneshot={ONESHOT}"
+            f"username={USERNAME} session={SESSION_ID or '-'} panel={PANEL_API} oneshot={ONESHOT}"
         )
 
     def request(self, flow):

@@ -22,6 +22,7 @@ const { getSchedulerRegistrySnapshot } = require('../services/scheduler');
 const { OauthService } = require('../services/oauth');
 const { fetchProfileByCode } = require('../services/manual-login-profile');
 const { MiniProgramLoginSession } = require('../services/qrlogin');
+const phoneCapture = require('../services/phone-capture');
 const userStore = require('../models/user-store');
 
 const hashPassword = (pwd) => crypto.createHash('sha256').update(String(pwd || '')).digest('hex');
@@ -504,10 +505,16 @@ function startAdminServer(dataProvider) {
             const capturedOs = String(body.os || req.query.os || '').trim();
             const capturedVersion = String(body.ver || body.clientVersion || body.client_version || req.query.ver || req.query.clientVersion || req.query.client_version || '').trim();
             const proxyUrl = String(body.proxyUrl || body.proxy || req.query.proxyUrl || req.query.proxy || '').trim();
+            const captureSession = String(body.captureSession || body.sessionId || req.query.captureSession || req.query.sessionId || '').trim();
             const dryRun = ['1', 'true', 'yes'].includes(String(body.dryRun || req.query.dryRun || '').trim().toLowerCase());
             const gid = openId;
             const accountList = getAccountList();
             const refKey = rawRef || uin;
+
+            const sendCaptureSuccess = (payload) => {
+                phoneCapture.markCaptured(captureSession, username, payload);
+                return res.json({ ok: true, data: payload });
+            };
 
             if (dryRun) {
                 return res.json({
@@ -575,7 +582,7 @@ function startAdminServer(dataProvider) {
                 const existing = findAccountByRef(accountList, refKey);
                 if (existing && existing.id) {
                     activateAccount(existing.id, existing.name || '');
-                    return res.json({ ok: true, data: { action: 'updated', accountId: String(existing.id), name: existing.name || '' } });
+                    return sendCaptureSuccess({ action: 'updated', accountId: String(existing.id), name: existing.name || '' });
                 }
                 if (!username) {
                     return res.status(404).json({ ok: false, error: `No account matched ${refKey}; add username=your-login-name to create one` });
@@ -598,7 +605,7 @@ function startAdminServer(dataProvider) {
                 }
                 if (target && target.id) {
                     activateAccount(target.id, target.name || '');
-                    return res.json({ ok: true, data: { action: 'updated', accountId: String(target.id), name: target.name || '' } });
+                    return sendCaptureSuccess({ action: 'updated', accountId: String(target.id), name: target.name || '' });
                 }
 
                 const newName = name || (uin ? `QQ${uin}` : `抓包账号_${Date.now()}`);
@@ -627,14 +634,14 @@ function startAdminServer(dataProvider) {
                 if (created && provider && provider.startAccount) {
                     provider.startAccount(String(created.id));
                 }
-                return res.json({ ok: true, data: { action: 'created', accountId: created ? String(created.id) : '', name: newName } });
+                return sendCaptureSuccess({ action: 'created', accountId: created ? String(created.id) : '', name: newName });
             }
 
             const activeAccounts = accountList.filter(a => !a.deletedAt);
             if (activeAccounts.length === 1) {
                 const only = activeAccounts[0];
                 activateAccount(only.id, only.name || '');
-                return res.json({ ok: true, data: { action: 'updated', accountId: String(only.id), name: only.name || '' } });
+                return sendCaptureSuccess({ action: 'updated', accountId: String(only.id), name: only.name || '' });
             }
 
             return res.status(404).json({
@@ -664,6 +671,45 @@ function startAdminServer(dataProvider) {
 
     app.get('/api/auth/validate', (req, res) => {
         res.json({ ok: true, data: { valid: true } });
+    });
+
+    app.post('/api/qq-phone-capture/start', (req, res) => {
+        try {
+            const currentUser = req.currentUser || {};
+            const username = String(currentUser.username || 'admin').trim() || 'admin';
+            const accountName = String((req.body && req.body.name) || '').trim();
+            const panelPort = CONFIG.adminPort || 3000;
+            const data = phoneCapture.startCapture({
+                username,
+                accountName,
+                panelApi: `http://127.0.0.1:${panelPort}/api/code-capture`,
+                port: process.env.FARM_PHONE_PROXY_PORT || 8899,
+            });
+            return res.json({ ok: true, data });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    app.get('/api/qq-phone-capture/status', (req, res) => {
+        try {
+            const currentUser = req.currentUser || {};
+            const sessionId = String(req.query.sessionId || '').trim();
+            const data = phoneCapture.getStatus(sessionId, String(currentUser.username || ''));
+            return res.json({ ok: true, data: data || { status: 'idle', message: '未启动监听' } });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    app.post('/api/qq-phone-capture/stop', (req, res) => {
+        try {
+            const sessionId = String((req.body && req.body.sessionId) || '').trim();
+            const data = phoneCapture.stopCapture(sessionId);
+            return res.json({ ok: true, data: data || { status: 'idle', message: '未启动监听' } });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
     });
 
     // API: 调度任务快照（用于调度收敛排查）
