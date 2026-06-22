@@ -105,12 +105,13 @@ function renderPatch(wsBase, username, proxyUrl) {
   const safeProxyUrl = JSON.stringify(String(proxyUrl || ""));
   return `${MARKER_START}
 ;(function () {
-  if (globalThis.__qqFarmCodeCapturePatchInstalled) return;
-  globalThis.__qqFarmCodeCapturePatchInstalled = true;
-
   var reportBase = ${safeWsBase};
   var defaultUsername = ${safeUsername};
   var defaultProxyUrl = ${safeProxyUrl};
+  var patchConfigKey = reportBase + "|" + defaultUsername + "|" + defaultProxyUrl;
+  if (globalThis.__qqFarmCodeCapturePatchConfigKey === patchConfigKey) return;
+  globalThis.__qqFarmCodeCapturePatchConfigKey = patchConfigKey;
+
   var seen = Object.create(null);
 
   function appendParam(url, key, value) {
@@ -132,8 +133,9 @@ function renderPatch(wsBase, username, proxyUrl) {
   function report(rawUrl, mini, originalConnectSocket) {
     if (!isFarmGateUrl(rawUrl)) return;
     var code = getParam(rawUrl, "code");
-    if (!code || /^-\\d+$/.test(code) || seen[code]) return;
-    seen[code] = Date.now();
+    var seenKey = code + "|" + defaultUsername;
+    if (!code || /^-\\d+$/.test(code) || seen[seenKey]) return;
+    seen[seenKey] = Date.now();
 
     var reportUrl = reportBase;
     reportUrl = appendParam(reportUrl, "code", code);
@@ -163,8 +165,7 @@ function renderPatch(wsBase, username, proxyUrl) {
   function installOnce() {
     var mini = globalThis.qq || globalThis.wx;
     if (!mini || typeof mini.connectSocket !== "function") return false;
-    if (mini.__qqFarmCodeCaptureWrapped) return true;
-    var originalConnectSocket = mini.connectSocket;
+    var originalConnectSocket = mini.__qqFarmCodeCaptureOriginalConnectSocket || mini.connectSocket;
     mini.connectSocket = function (opts) {
       try {
         var url = opts && opts.url ? String(opts.url) : "";
@@ -172,8 +173,10 @@ function renderPatch(wsBase, username, proxyUrl) {
       } catch (_) {}
       return originalConnectSocket.apply(this, arguments);
     };
+    mini.__qqFarmCodeCaptureOriginalConnectSocket = originalConnectSocket;
     mini.__qqFarmCodeCaptureWrapped = true;
-    try { console.log("[qq-farm-code-capture] connectSocket patched"); } catch (_) {}
+    mini.__qqFarmCodeCaptureConfigKey = patchConfigKey;
+    try { console.log("[qq-farm-code-capture] connectSocket patched for " + defaultUsername); } catch (_) {}
     return true;
   }
 
