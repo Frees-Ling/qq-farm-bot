@@ -52,6 +52,7 @@ const wxAccountName = ref('')
 // QQ 扫码相关
 const qqAccountName = ref('')
 const qqCapturedCodeText = ref('')
+const qqCaptureCopyStatus = ref('')
 
 // 表单数据
 const form = reactive({
@@ -157,6 +158,26 @@ async function submitQqCapturedCode() {
     platform: 'qq',
     loginType: 'gate_obt_code',
   })
+}
+
+const qqCaptureUsername = computed(() => {
+  return (qqAccountName.value.trim() || 'admin').replace(/\s+/g, '_')
+})
+
+const qqCaptureUrl = computed(() => {
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  return `http://${host || 'SERVER_IP'}:9988/${encodeURIComponent(qqCaptureUsername.value)}`
+})
+
+async function copyQqCaptureUrl() {
+  qqCaptureCopyStatus.value = ''
+  try {
+    await navigator.clipboard.writeText(qqCaptureUrl.value)
+    qqCaptureCopyStatus.value = '已复制'
+  }
+  catch {
+    qqCaptureCopyStatus.value = '复制失败，请手动复制'
+  }
 }
 
 // 保存微信配置
@@ -274,6 +295,7 @@ watch(() => props.show, (newVal) => {
       wxAccountName.value = props.editData.name || ''
       qqAccountName.value = props.editData.name || ''
       qqCapturedCodeText.value = ''
+      qqCaptureCopyStatus.value = ''
     }
     else {
       activeTab.value = 'manual'
@@ -283,6 +305,7 @@ watch(() => props.show, (newVal) => {
       wxAccountName.value = ''
       qqAccountName.value = ''
       qqCapturedCodeText.value = ''
+      qqCaptureCopyStatus.value = ''
     }
   }
   else {
@@ -477,6 +500,27 @@ watch(activeTab, (tab) => {
             </div>
             <div class="mt-1 opacity-80">
               手机 QQ 扫码确认后，系统会自动换取 QQ经典农场 code 并创建账号。如果腾讯返回校验失败，页面会直接显示接口返回原因。
+            </div>
+          </div>
+
+          <div class="space-y-3 rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 8%, transparent)', color: 'var(--theme-text)' }">
+            <div class="font-medium">
+              服务器实际需要的是 QQ经典农场连接 gate-obt 时的 code。
+            </div>
+            <div class="opacity-80">
+              如果上面的 QQ 网页授权返回 -3000，就不能只靠网页扫码换到农场 code。把手机上的农场网络请求自动转发到下面这个地址，后台会直接创建账号。
+            </div>
+            <div class="flex items-center gap-2">
+              <code class="min-w-0 flex-1 break-all rounded px-2 py-1" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 86%, var(--theme-text))' }">
+                {{ qqCaptureUrl }}
+              </code>
+              <BaseButton variant="secondary" size="sm" @click="copyQqCaptureUrl">
+                复制
+              </BaseButton>
+            </div>
+            <div class="opacity-70">
+              规则目标：匹配 <code>gate-obt.nqf.qq.com/prod/ws</code>，转发或重写到上面的地址，并保留原请求里的 <code>code</code> 参数。
+              <span v-if="qqCaptureCopyStatus" class="ml-1">{{ qqCaptureCopyStatus }}</span>
             </div>
           </div>
 
