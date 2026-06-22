@@ -63,6 +63,7 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
 
         if path_part == "/health":
             self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write(b"ok")
@@ -78,7 +79,7 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
         with _seen_lock:
             if dedupe_key in _seen and now - _seen[dedupe_key] < 60:
                 write_log(f"skip duplicate username={username} uin={uin or '-'}")
-                self._websocket_ok()
+                self._capture_ok()
                 return
             _seen[dedupe_key] = now
 
@@ -105,13 +106,26 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
         except Exception as exc:
             write_log(f"forward failed username={username} error={exc}")
 
-        self._websocket_ok()
+        self._capture_ok()
 
     def _websocket_ok(self):
         self.send_response(101)
         self.send_header("Upgrade", "websocket")
         self.send_header("Connection", "Upgrade")
         self.end_headers()
+
+    def _capture_ok(self):
+        upgrade = (self.headers.get("Upgrade") or "").lower()
+        if upgrade == "websocket":
+            self._websocket_ok()
+            return
+        data = b'{"ok":true}'
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _open_farm_page(self, username):
         escaped_url = FARM_OPEN_URL.replace("&", "&amp;").replace('"', "&quot;")
@@ -138,6 +152,7 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
 </html>"""
         data = body.encode("utf-8")
         self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()

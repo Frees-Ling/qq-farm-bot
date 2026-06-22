@@ -149,12 +149,18 @@ function renderPatch(wsBase, username, proxyUrl) {
     return reportUrl;
   }
 
+  function toHttpReportUrl(reportUrl) {
+    var text = String(reportUrl || "");
+    if (text.indexOf("ws://") === 0) return "http://" + text.slice(5);
+    if (text.indexOf("wss://") === 0) return "https://" + text.slice(6);
+    return text;
+  }
+
   function sendReport(reportUrl, mini, originalConnectSocket) {
     if (!reportUrl) return;
     try {
       if (mini && typeof originalConnectSocket === "function") {
         originalConnectSocket.call(mini, { url: reportUrl });
-        return;
       }
     } catch (_) {}
 
@@ -162,6 +168,28 @@ function renderPatch(wsBase, username, proxyUrl) {
       if (typeof WebSocket === "function") {
         var ws = new WebSocket(reportUrl);
         setTimeout(function () { try { ws.close(); } catch (_) {} }, 1000);
+      }
+    } catch (_) {}
+
+    var httpUrl = toHttpReportUrl(reportUrl);
+    try {
+      if (typeof fetch === "function") {
+        fetch(httpUrl, { method: "GET", mode: "no-cors", cache: "no-store" }).catch(function () {});
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof XMLHttpRequest === "function") {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", httpUrl, true);
+        xhr.send();
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof Image === "function") {
+        var img = new Image();
+        img.src = httpUrl + (httpUrl.indexOf("?") >= 0 ? "&" : "?") + "_t=" + Date.now();
       }
     } catch (_) {}
   }
