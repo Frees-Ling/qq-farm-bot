@@ -83,14 +83,20 @@ function candidateMiniappRoots() {
   return Array.from(new Set(roots));
 }
 
-function findLatestGameJs(appid) {
+function findGameJsFiles(appid) {
   const files = [];
   for (const root of candidateMiniappRoots()) {
     walk(root, files);
   }
   const matched = files.filter((file) => path.basename(path.dirname(file)).startsWith(`${appid}_`));
-  matched.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return matched[0] || "";
+  matched.sort((a, b) => {
+    try {
+      return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs;
+    } catch {
+      return 0;
+    }
+  });
+  return matched;
 }
 
 function renderPatch(wsBase, username, proxyUrl) {
@@ -199,22 +205,38 @@ function patchFile(file, patch) {
 
 function main() {
   const appid = argValue("--appid", "1112386029");
-  const target = argValue("--target", "") || findLatestGameJs(appid);
+  const explicitTarget = argValue("--target", "");
+  const targets = explicitTarget ? [explicitTarget] : findGameJsFiles(appid);
   const wsBase = argValue("--capture-ws", process.env.FARM_CAPTURE_WS || "ws://127.0.0.1:9988/admin");
   const username = argValue("--username", process.env.FARM_CAPTURE_USERNAME || "admin");
   const proxyUrl = argValue("--proxy-url", process.env.FARM_CAPTURE_PROXY_URL || "");
 
-  if (!target) {
+  if (targets.length === 0) {
     console.error(`No QQ Farm game.js found for appid ${appid}. Open QQ Classic Farm once, then run this again.`);
     process.exit(1);
   }
-  if (!fs.existsSync(target)) {
-    console.error(`Target not found: ${target}`);
-    process.exit(1);
+
+  const patch = renderPatch(wsBase, username, proxyUrl);
+  let patched = 0;
+  for (const target of targets) {
+    if (!fs.existsSync(target)) {
+      console.error(`Target not found: ${target}`);
+      continue;
+    }
+    try {
+      patchFile(target, patch);
+      patched += 1;
+      console.log(`Patched: ${target}`);
+    } catch (err) {
+      console.error(`Patch failed: ${target}: ${err && err.message ? err.message : err}`);
+    }
   }
 
-  patchFile(target, renderPatch(wsBase, username, proxyUrl));
-  console.log(`Patched: ${target}`);
+  if (patched === 0) {
+    console.error(`No QQ Farm game.js was patched for appid ${appid}.`);
+    process.exit(1);
+  }
+  console.log(`Patched ${patched}/${targets.length} QQ Farm game.js file(s).`);
   console.log(`Capture: ${wsBase}`);
 }
 
