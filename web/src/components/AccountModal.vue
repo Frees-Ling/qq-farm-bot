@@ -51,8 +51,6 @@ onMounted(() => {
 const wxAccountName = ref('')
 // QQ 扫码相关
 const qqAccountName = ref('')
-const qqCapturedCodeText = ref('')
-const qqCaptureCopyStatus = ref('')
 
 // 表单数据
 const form = reactive({
@@ -127,57 +125,6 @@ async function loadQqQRCode() {
   const success = await qqLoginStore.getQRCode()
   if (success)
     startQqCheck()
-}
-
-function extractCode(input: string) {
-  const raw = String(input || '').trim()
-  if (!raw)
-    return ''
-  const match = raw.match(/[?&]code=([^&\s]+)/i)
-  if (match && match[1])
-    return decodeURIComponent(match[1])
-  return raw
-}
-
-async function submitQqCapturedCode() {
-  errorMessage.value = ''
-  const code = extractCode(qqCapturedCodeText.value)
-  if (!code) {
-    errorMessage.value = '请粘贴 wss 链接里的 code 或纯 code'
-    return
-  }
-  if (/^-\d+$/.test(code)) {
-    errorMessage.value = '这是错误码，不是真实农场 code'
-    return
-  }
-  const name = qqAccountName.value.trim() || `QQ账号${Date.now()}`
-  await addAccount({
-    id: props.editData?.id,
-    name: props.editData ? (props.editData.name || name) : name,
-    code,
-    platform: 'qq',
-    loginType: 'gate_obt_code',
-  })
-}
-
-const qqCaptureUsername = computed(() => {
-  return (qqAccountName.value.trim() || 'admin').replace(/\s+/g, '_')
-})
-
-const qqCaptureUrl = computed(() => {
-  const host = typeof window !== 'undefined' ? window.location.hostname : ''
-  return `http://${host || 'SERVER_IP'}:9988/${encodeURIComponent(qqCaptureUsername.value)}`
-})
-
-async function copyQqCaptureUrl() {
-  qqCaptureCopyStatus.value = ''
-  try {
-    await navigator.clipboard.writeText(qqCaptureUrl.value)
-    qqCaptureCopyStatus.value = '已复制'
-  }
-  catch {
-    qqCaptureCopyStatus.value = '复制失败，请手动复制'
-  }
 }
 
 // 保存微信配置
@@ -294,8 +241,6 @@ watch(() => props.show, (newVal) => {
       form.platform = props.editData.platform || 'qq'
       wxAccountName.value = props.editData.name || ''
       qqAccountName.value = props.editData.name || ''
-      qqCapturedCodeText.value = ''
-      qqCaptureCopyStatus.value = ''
     }
     else {
       activeTab.value = 'manual'
@@ -304,8 +249,6 @@ watch(() => props.show, (newVal) => {
       form.platform = 'qq'
       wxAccountName.value = ''
       qqAccountName.value = ''
-      qqCapturedCodeText.value = ''
-      qqCaptureCopyStatus.value = ''
     }
   }
   else {
@@ -456,7 +399,7 @@ watch(activeTab, (tab) => {
             placeholder="留空使用 QQ 昵称或号码"
           />
 
-          <div class="flex flex-col items-center justify-center py-4 space-y-4">
+          <div class="flex flex-col items-center justify-center py-6 space-y-4">
             <div
               v-if="qqQrImageSrc"
               class="border rounded-lg p-2"
@@ -481,62 +424,21 @@ watch(activeTab, (tab) => {
               {{ qqLoginStore.errorMessage }}
             </p>
 
-            <p v-if="qqLoginStore.diagnosticMessage" class="max-w-full break-all rounded p-2 text-xs leading-5 opacity-80" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 86%, var(--theme-text))', color: 'var(--theme-text)' }">
-              {{ qqLoginStore.diagnosticMessage }}
-            </p>
-
             <BaseButton variant="secondary" size="sm" :loading="qqLoginStore.isLoading" @click="loadQqQRCode">
               刷新二维码
             </BaseButton>
-
-            <p v-if="qqLoginStore.qrUrl" class="break-all text-center text-xs opacity-60" :style="{ color: 'var(--theme-text)' }">
-              {{ qqLoginStore.qrUrl }}
-            </p>
           </div>
 
           <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
             <div class="font-medium">
-              这里生成的是 QQ 登录授权二维码，不是打开农场的二维码。
+              使用手机 QQ 扫码确认登录。
             </div>
             <div class="mt-1 opacity-80">
-              手机 QQ 扫码确认后，系统会自动换取 QQ经典农场 code 并创建账号。如果腾讯返回校验失败，页面会直接显示接口返回原因。
+              确认后请保持页面打开，系统会自动尝试创建账号。
             </div>
-          </div>
-
-          <div class="space-y-3 rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 8%, transparent)', color: 'var(--theme-text)' }">
-            <div class="font-medium">
-              服务器实际需要的是 QQ经典农场连接 gate-obt 时的 code。
+            <div v-if="qqLoginStore.diagnosticMessage" class="mt-2 break-all opacity-70">
+              {{ qqLoginStore.diagnosticMessage }}
             </div>
-            <div class="opacity-80">
-              如果上面的 QQ 网页授权返回 -3000，就不能只靠网页扫码换到农场 code。把手机上的农场网络请求自动转发到下面这个地址，后台会直接创建账号。
-            </div>
-            <div class="flex items-center gap-2">
-              <code class="min-w-0 flex-1 break-all rounded px-2 py-1" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 86%, var(--theme-text))' }">
-                {{ qqCaptureUrl }}
-              </code>
-              <BaseButton variant="secondary" size="sm" @click="copyQqCaptureUrl">
-                复制
-              </BaseButton>
-            </div>
-            <div class="opacity-70">
-              规则目标：匹配 <code>gate-obt.nqf.qq.com/prod/ws</code>，转发或重写到上面的地址，并保留原请求里的 <code>code</code> 参数。
-              <span v-if="qqCaptureCopyStatus" class="ml-1">{{ qqCaptureCopyStatus }}</span>
-            </div>
-          </div>
-
-          <div class="space-y-3 rounded-lg p-3" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 88%, var(--theme-text))' }">
-            <BaseTextarea
-              v-model="qqCapturedCodeText"
-              label="真实农场 code / 抓包到的 wss 请求"
-              placeholder="不用打开 wss。复制抓包记录里的 wss://gate-obt.nqf.qq.com/prod/ws?...&code=xxx，或只粘贴 code"
-              :rows="3"
-            />
-            <BaseButton variant="primary" size="sm" :loading="loading" @click="submitQqCapturedCode">
-              用这个 code 创建 QQ 账号
-            </BaseButton>
-            <p class="text-xs leading-5 opacity-70" :style="{ color: 'var(--theme-text)' }">
-              wss 不是网页，浏览器打不开是正常的。这里只需要复制小程序请求里的 code 参数；网页 QQ 扫码返回 -3000 时，只有小程序实际连接 gate-obt 时产生的 code 才能登录农场。
-            </p>
           </div>
         </div>
 
