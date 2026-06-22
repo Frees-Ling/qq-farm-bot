@@ -111,6 +111,8 @@ while true; do
     print_state
     echo
     echo "Most common cause: QQ Classic Farm has not opened inside the server VNC desktop, so game.js/code was never produced."
+    echo "Fallback if you already have the real wss code:"
+    echo "  node tools/add-account-code.js --username '$USERNAME' --code '<REAL_CODE>'"
     exit 2
   fi
 
