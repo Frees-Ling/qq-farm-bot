@@ -23,6 +23,16 @@ export const useQqLoginStore = defineStore('qq-login', () => {
   const status = ref<QqLoginStatus>('idle')
   const statusMessage = ref('')
   const errorMessage = ref('')
+  const diagnosticMessage = ref('')
+
+  function setDiagnostic(stage: string, detail: Record<string, any>) {
+    const safeDetail = { ...detail }
+    if (safeDetail.ticket) {
+      const ticket = String(safeDetail.ticket)
+      safeDetail.ticket = ticket ? `present...${ticket.slice(-6)}` : ''
+    }
+    diagnosticMessage.value = `${stage}: ${JSON.stringify(safeDetail)}`
+  }
 
   function resetState() {
     qrCode.value = null
@@ -31,6 +41,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     status.value = 'idle'
     statusMessage.value = ''
     errorMessage.value = ''
+    diagnosticMessage.value = ''
   }
 
   async function getQRCode(): Promise<boolean> {
@@ -45,6 +56,11 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       loginCode.value = data.code || ''
       qrCode.value = data.image || ''
       qrUrl.value = data.url || ''
+      setDiagnostic('create', {
+        loginCode: loginCode.value,
+        url: qrUrl.value,
+        isFarmOpenUrl: qrUrl.value.includes('m.q.qq.com'),
+      })
       status.value = 'ready'
       statusMessage.value = '请使用手机 QQ 扫码并确认登录'
       return true
@@ -70,6 +86,14 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       const res = await api.post('/api/qr/check', { code: loginCode.value }, { silent: true })
       const data = unwrapOk<any>(res.data as ApiResult<any>, '检查 QQ 扫码状态失败')
       const remoteStatus = String(data.status || '')
+      setDiagnostic('check', {
+        status: remoteStatus || 'Wait',
+        qqCode: data.qqCode,
+        ok: data.ok,
+        hasTicket: data.hasTicket || !!data.ticket,
+        uin: data.uin || '',
+        msg: data.msg || '',
+      })
 
       if (remoteStatus === 'OK' && data.ticket) {
         status.value = 'success'
@@ -117,6 +141,9 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     try {
       const res = await api.post('/api/qr/auth-code', { ticket, appid: '1112386029' }, { silent: true })
       const data = unwrapOk<{ code: string }>(res.data as ApiResult<any>, '换取 QQ 农场 code 失败')
+      setDiagnostic('auth-code', {
+        returnedCode: data.code ? 'present' : '',
+      })
       if (!data.code) {
         status.value = 'error'
         errorMessage.value = 'QQ 授权成功，但没有返回农场 code'
@@ -129,6 +156,13 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     catch (e: any) {
       status.value = 'error'
       errorMessage.value = getErrorMessage(e, '换取 QQ 农场 code 失败')
+      const payload = e?.response?.data
+      const detail = payload?.data || payload || {}
+      setDiagnostic('auth-code-error', {
+        error: payload?.error || e?.message || '',
+        authCode: detail.authCode || detail.raw?.code || '',
+        reason: detail.reason || detail.raw?.msg || detail.raw?.message || '',
+      })
       return { success: false }
     }
     finally {
@@ -144,6 +178,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     status,
     statusMessage,
     errorMessage,
+    diagnosticMessage,
     resetState,
     getQRCode,
     checkLogin,

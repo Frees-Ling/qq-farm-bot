@@ -424,6 +424,10 @@ watch(activeTab, (tab) => {
               {{ qqLoginStore.errorMessage }}
             </p>
 
+            <p v-if="qqLoginStore.diagnosticMessage" class="max-w-full break-all rounded p-2 text-xs leading-5 opacity-80" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 86%, var(--theme-text))', color: 'var(--theme-text)' }">
+              {{ qqLoginStore.diagnosticMessage }}
+            </p>
+
             <BaseButton variant="secondary" size="sm" :loading="qqLoginStore.isLoading" @click="loadQqQRCode">
               刷新二维码
             </BaseButton>

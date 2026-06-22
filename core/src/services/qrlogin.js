@@ -186,17 +186,47 @@ class MiniProgramLoginSession {
                 return { status: 'Error' };
             }
 
-            const { code: resCode, data } = response.data;
+            const raw = response.data || {};
+            const { code: resCode, data, msg, message } = raw;
 
             if (+resCode === 0) {
-                if (+data.ok !== 1) return { status: 'Wait' };
+                if (+data.ok !== 1) {
+                    return {
+                        status: 'Wait',
+                        qqCode: resCode,
+                        ok: data.ok,
+                        msg: msg || message || '',
+                        raw: { code: resCode, ok: data.ok, msg: msg || message || '' },
+                    };
+                }
                 // 这里的 data.nick 字段可能存在，需要确认返回结构
-                return { status: 'OK', ticket: data.ticket, uin: data.uin, nickname: data.nick || '' };
+                return {
+                    status: 'OK',
+                    ticket: data.ticket,
+                    uin: data.uin,
+                    nickname: data.nick || '',
+                    qqCode: resCode,
+                    ok: data.ok,
+                    hasTicket: !!data.ticket,
+                    raw: { code: resCode, ok: data.ok, hasTicket: !!data.ticket, uin: data.uin || '' },
+                };
             }
 
-            if (+resCode === -10003) return { status: 'Used' };
+            if (+resCode === -10003) {
+                return {
+                    status: 'Used',
+                    qqCode: resCode,
+                    msg: msg || message || '',
+                    raw: { code: resCode, msg: msg || message || '' },
+                };
+            }
 
-            return { status: 'Error', msg: `Code: ${resCode}` };
+            return {
+                status: 'Error',
+                qqCode: resCode,
+                msg: msg || message || `Code: ${resCode}`,
+                raw: { code: resCode, msg: msg || message || '' },
+            };
         } catch (error) {
             console.error('MP Query Status Error:', error.message);
             throw error;
@@ -216,17 +246,31 @@ class MiniProgramLoginSession {
                 return { ok: false, code: '', error: `QQ授权接口异常: HTTP ${response.status}` };
             }
 
-            const { code, msg, message } = response.data || {};
+            const raw = response.data || {};
+            const { code, msg, message } = raw;
             const authCode = String(code || '').trim();
             if (!authCode || /^-\d+$/.test(authCode)) {
                 const reason = String(msg || message || '校验失败').trim();
                 return {
                     ok: false,
                     code: '',
+                    authCode,
+                    reason,
+                    raw: {
+                        code: authCode || '',
+                        msg: msg || '',
+                        message: message || '',
+                    },
                     error: `QQ扫码授权失败: code=${authCode || 'empty'} ${reason}。QQ扫码登录接口已不可用，请用手机抓包获取 wss://gate-obt.nqf.qq.com 请求里的 code 参数后手动添加账号。`,
                 };
             }
-            return { ok: true, code: authCode, error: '' };
+            return {
+                ok: true,
+                code: authCode,
+                error: '',
+                authCode,
+                raw: { code: authCode },
+            };
         } catch (error) {
             console.error('MP Get Auth Code Error:', error.message);
             return { ok: false, code: '', error: `QQ授权请求失败: ${error.message}` };
