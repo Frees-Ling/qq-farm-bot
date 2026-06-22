@@ -488,9 +488,25 @@ function startAdminServer(dataProvider) {
             const capturedOs = String(body.os || req.query.os || '').trim();
             const capturedVersion = String(body.ver || body.clientVersion || body.client_version || req.query.ver || req.query.clientVersion || req.query.client_version || '').trim();
             const proxyUrl = String(body.proxyUrl || body.proxy || req.query.proxyUrl || req.query.proxy || '').trim();
+            const dryRun = ['1', 'true', 'yes'].includes(String(body.dryRun || req.query.dryRun || '').trim().toLowerCase());
             const gid = openId;
             const accountList = getAccountList();
             const refKey = rawRef || uin;
+
+            if (dryRun) {
+                return res.json({
+                    ok: true,
+                    data: {
+                        action: 'dry-run',
+                        username,
+                        ref: refKey,
+                        hasUin: !!uin,
+                        hasOpenId: !!openId,
+                        hasProxy: !!proxyUrl,
+                        accountCount: Array.isArray(accountList) ? accountList.length : 0,
+                    },
+                });
+            }
 
             const applyCapturedRuntimeConfig = (targetUsername) => {
                 if (!targetUsername || !store || typeof store.setRuntimeConfig !== 'function') return;

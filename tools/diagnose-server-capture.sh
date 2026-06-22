@@ -39,7 +39,7 @@ curl -sS -i --max-time 5 http://127.0.0.1:9988/admin 2>&1 | sed -n '1,12p' || tr
 echo
 echo "== panel code-capture dry run =="
 DRY_CODE="DIAG_CAPTURE_$(date +%s)"
-curl -sS --max-time 10 "http://127.0.0.1:3000/api/code-capture?username=admin&code=${DRY_CODE}&platform=qq&os=Windows&ver=1.12.1.6_20260609" 2>&1 || true
+curl -sS --max-time 10 "http://127.0.0.1:3000/api/code-capture?dryRun=1&username=admin&code=${DRY_CODE}&platform=qq&os=Windows&ver=1.12.1.6_20260609" 2>&1 || true
 echo
 
 echo
