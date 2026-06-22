@@ -20,6 +20,25 @@ if [ -z "$USERNAME" ]; then
   exit 1
 fi
 
+if ! command -v qq >/dev/null 2>&1; then
+  cat <<EOF
+Linux QQ is not installed on this server, so QR login cannot create a QQ Farm account here yet.
+
+Install the Ubuntu desktop + Linux QQ + bot services first:
+  sudo bash tools/setup-ubuntu-qq-desktop.sh
+  sudo -u root vncpasswd
+  bash tools/start-ubuntu-qq-desktop.sh
+
+Then connect to VNC, scan the QQ login QR, and rerun:
+  sudo bash tools/wait-account-capture.sh $USERNAME
+  sudo bash tools/wait-account-capture.sh $USERNAME '<proxyUrl>'
+
+If you already have a real wss code, use:
+  node tools/add-account-code.js --username '$USERNAME' --code '<REAL_CODE>'
+EOF
+  exit 3
+fi
+
 mkdir -p "$ROOT/logs"
 touch "$LOG_FILE"
 
