@@ -441,62 +441,31 @@ function startAdminServer(dataProvider) {
 
     // ============ QQ 扫码登录 API ============
     app.post('/api/qr/create', async (req, res) => {
-        try {
-            const result = await MiniProgramLoginSession.requestLoginCode();
-            if (result && result.code) {
-                res.json({
-                    ok: true,
-                    data: { code: result.code, url: result.url, image: result.image }
-                });
-            } else {
-                return res.json({ ok: false, error: (result && result.error) || '获取 Code 失败' });
-                res.json({ ok: false, error: '获取二维码失败' });
-            }
-        } catch (e) {
-            res.status(500).json({ ok: false, error: e.message });
-        }
+        res.status(410).json({
+            ok: false,
+            error: 'QQ 网页扫码授权接口已不可用。请在服务器 QQ 客户端扫码登录后打开 QQ经典农场，由 code-capture 自动捕获真实 code。',
+        });
     });
 
     app.post('/api/qr/check', async (req, res) => {
-        try {
-            const { code } = req.body || {};
-            if (!code) return res.status(400).json({ ok: false, error: '缺少 code 参数' });
-            const result = await MiniProgramLoginSession.queryStatus(code);
-            res.json({ ok: true, data: result });
-        } catch (e) {
-            res.status(500).json({ ok: false, error: e.message });
-        }
+        res.status(410).json({
+            ok: false,
+            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
+        });
     });
 
     app.post('/api/qr/auth-code', async (req, res, next) => {
-        try {
-            const { ticket } = req.body || {};
-            if (!ticket) return res.status(400).json({ ok: false, error: 'Missing ticket' });
-            const result = await MiniProgramLoginSession.getAuthCodeResult(ticket, '1112386029');
-            if (result && result.ok && result.code) {
-                return res.json({ ok: true, data: { code: result.code } });
-            }
-            return res.json({ ok: false, error: (result && result.error) || 'Get farm code failed' });
-        } catch (e) {
-            return res.status(500).json({ ok: false, error: e.message });
-        }
+        res.status(410).json({
+            ok: false,
+            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
+        });
     });
 
     app.post('/api/qr/auth-code', async (req, res) => {
-        try {
-            const { ticket } = req.body || {};
-            if (!ticket) return res.status(400).json({ ok: false, error: '缺少 ticket 参数' });
-            const result = MiniProgramLoginSession.getAuthCodeResult
-                ? await MiniProgramLoginSession.getAuthCodeResult(ticket, '1112386029')
-                : { ok: true, code: await MiniProgramLoginSession.getAuthCode(ticket, '1112386029') };
-            if (result && result.ok && result.code) {
-                res.json({ ok: true, data: { code: result.code } });
-            } else {
-                res.json({ ok: false, error: '获取 Code 失败' });
-            }
-        } catch (e) {
-            res.status(500).json({ ok: false, error: e.message });
-        }
+        res.status(410).json({
+            ok: false,
+            error: 'QQ 网页扫码授权接口已不可用。请使用服务器 QQ 客户端捕获流程。',
+        });
     });
 
     const codeCaptureHandler = (req, res) => {

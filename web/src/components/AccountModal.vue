@@ -9,7 +9,6 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
 import { useWxLoginStore } from '@/stores/wx-login'
-import { useQqLoginStore } from '@/stores/qq-login'
 
 const props = defineProps<{
   show: boolean
@@ -19,7 +18,6 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'saved'])
 
 const wxLoginStore = useWxLoginStore()
-const qqLoginStore = useQqLoginStore()
 
 // 标签页：manual-手动填码, wx-微信扫码, qq-QQ扫码, wx-config-微信配置
 const activeTab = ref<'wx' | 'qq' | 'wx-config' | 'manual'>('manual')
@@ -94,39 +92,13 @@ async function loadWxQRCode() {
   }
 }
 
-// QQ 扫码轮询
-const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
-  if (qqLoginStore.status !== 'ready' && qqLoginStore.status !== 'scanning') {
-    return
-  }
-  const result = await qqLoginStore.checkLogin()
-  if (result.success && result.ticket) {
-    stopQqCheck()
-    // 获取 Code 并添加账号
-    const codeResult = await qqLoginStore.getFarmCode(result.ticket)
-    if (codeResult.success && codeResult.code) {
-      const name = qqAccountName.value.trim() || result.nickname || `QQ账号${Date.now()}`
-      await addAccount({
-        id: props.editData?.id,
-        name: props.editData ? (props.editData.name || name) : name,
-        code: codeResult.code,
-        platform: 'qq',
-        loginType: 'qq_qr',
-        uin: result.uin || '',
-      })
-    }
-  }
-}, 2000, { immediate: false })
+const qqCaptureHttpUrl = computed(() => {
+  const host = window.location.hostname || 'SERVER_IP'
+  return `http://${host}:9988/admin`
+})
 
-// 获取 QQ 二维码
-async function loadQrQRCode() {
-  if (activeTab.value !== 'qq')
-    return
-  qqLoginStore.resetState()
-  const success = await qqLoginStore.getQRCode()
-  if (success) {
-    startQqCheck()
-  }
+function openQqCapturePage() {
+  window.open(qqCaptureHttpUrl.value, '_blank', 'noopener,noreferrer')
 }
 
 // 保存微信配置
@@ -215,22 +187,9 @@ const wxQrImageSrc = computed(() => {
   return `data:image/png;base64,${wxLoginStore.qrCode}`
 })
 
-// QQ 二维码图片
-const qqQrImageSrc = computed(() => {
-  if (!qqLoginStore.qrCode)
-    return ''
-  if (qqLoginStore.qrCode.startsWith('data:'))
-    return qqLoginStore.qrCode
-  if (qqLoginStore.qrCode.startsWith('http'))
-    return qqLoginStore.qrCode
-  return `data:image/png;base64,${qqLoginStore.qrCode}`
-})
-
 function close() {
   stopWxCheck()
-  stopQqCheck()
   wxLoginStore.resetState()
-  qqLoginStore.resetState()
   emit('close')
 }
 
@@ -256,9 +215,7 @@ watch(() => props.show, (newVal) => {
   }
   else {
     stopWxCheck()
-    stopQqCheck()
     wxLoginStore.resetState()
-    qqLoginStore.resetState()
   }
 })
 
@@ -266,14 +223,9 @@ watch(activeTab, (tab) => {
   if (tab === 'wx') {
     loadWxQRCode()
   }
-  else if (tab === 'qq') {
-    loadQrQRCode()
-  }
   else {
     stopWxCheck()
-    stopQqCheck()
     wxLoginStore.resetState()
-    qqLoginStore.resetState()
   }
 })
 </script>
@@ -390,46 +342,42 @@ watch(activeTab, (tab) => {
           </div>
         </div>
 
-        <!-- QQ 扫码 Tab -->
+        <!-- QQ 客户端捕获 Tab -->
         <div v-if="activeTab === 'qq'" class="space-y-4">
           <BaseInput
             v-model="qqAccountName"
             label="账号备注（可选）"
-            placeholder="留空使用QQ昵称"
+            placeholder="捕获成功后可在账号列表修改"
           />
 
-          <div class="flex flex-col items-center justify-center py-4 space-y-4">
-            <div
-              v-if="qqQrImageSrc"
-              class="border rounded-lg p-2"
-              :style="{ borderColor: 'color-mix(in srgb, var(--theme-text) 20%, transparent)', background: '#fff' }"
-            >
-              <img :src="qqQrImageSrc" class="h-48 w-48">
-            </div>
-            <div
-              v-else
-              class="h-48 w-48 flex items-center justify-center rounded-lg"
-              :style="{ background: 'color-mix(in srgb, var(--theme-bg) 90%, var(--theme-text))' }"
-            >
-              <div v-if="qqLoginStore.isLoading" i-svg-spinners-90-ring-with-bg class="text-3xl" :style="{ color: 'var(--theme-primary)' }" />
-              <span v-else class="text-sm" :style="{ color: 'var(--theme-text)' }">点击获取二维码</span>
+          <div class="space-y-3 py-2">
+            <div class="rounded-lg p-3 text-sm leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
+              <div class="font-medium">
+                QQ 网页扫码接口已不可用，请使用服务器 QQ 客户端捕获。
+              </div>
+              <div class="mt-2 opacity-80">
+                在服务器桌面或 VNC 里打开 QQ，让用户扫码登录 QQ 客户端，然后打开 QQ经典农场。捕获服务会自动读取真实农场 code，并创建/启动账号。
+              </div>
             </div>
 
-            <p class="text-center text-sm" :style="{ color: 'var(--theme-text)' }">
-              {{ qqLoginStore.statusMessage }}
-            </p>
+            <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-bg) 88%, var(--theme-text))', color: 'var(--theme-text)' }">
+              <div>1. 服务器运行面板、捕获服务和 patch watcher。</div>
+              <div>2. 服务器 QQ 客户端扫码登录一次。</div>
+              <div>3. 打开 QQ经典农场，关闭后再打开一次。</div>
+              <div>4. 捕获成功后账号会自动出现并开始农场脚本。</div>
+            </div>
 
-            <p v-if="qqLoginStore.errorMessage" class="text-center text-sm text-red-600">
-              {{ qqLoginStore.errorMessage }}
-            </p>
-
-            <BaseButton variant="secondary" size="sm" :loading="qqLoginStore.isLoading" @click="loadQrQRCode">
-              刷新二维码
+            <BaseButton variant="primary" size="sm" @click="openQqCapturePage">
+              打开捕获入口
             </BaseButton>
+
+            <p class="break-all text-xs opacity-70" :style="{ color: 'var(--theme-text)' }">
+              {{ qqCaptureHttpUrl }}
+            </p>
           </div>
 
           <div class="text-center text-xs opacity-60" :style="{ color: 'var(--theme-text)' }">
-            使用手机QQ扫描二维码登录，登录成功后将自动添加账号
+            不要再扫旧 QQ 网页授权二维码；它会返回 code=-3000。
           </div>
         </div>
 
