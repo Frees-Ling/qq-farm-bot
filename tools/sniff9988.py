@@ -1,4 +1,5 @@
 import http.server
+import json
 import os
 import socketserver
 import threading
@@ -11,6 +12,7 @@ PANEL_API = os.environ.get("FARM_PANEL_API", "http://127.0.0.1:3000/api/code-cap
 LISTEN_HOST = os.environ.get("FARM_CAPTURE_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("FARM_CAPTURE_PORT", "9988"))
 LOG_PATH = os.environ.get("FARM_CAPTURE_LOG", "")
+ONESHOT = os.environ.get("FARM_CAPTURE_ONESHOT", "").lower() in ("1", "true", "yes", "on")
 FARM_OPEN_URL = os.environ.get(
     "FARM_OPEN_URL",
     "https://m.q.qq.com/a/s/07f019703b54ceb96f9ead1379984a25",
@@ -18,6 +20,14 @@ FARM_OPEN_URL = os.environ.get(
 
 _seen = {}
 _seen_lock = threading.Lock()
+
+
+def is_ok_response(body):
+    try:
+        data = json.loads(body)
+        return data.get("ok") is True
+    except Exception:
+        return False
 
 
 def write_log(message):
@@ -100,13 +110,18 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
         if proxy_url:
             api += f"&proxyUrl={urllib.parse.quote(proxy_url)}"
 
+        forwarded_ok = False
         try:
             body = urllib.request.urlopen(api, timeout=10).read().decode("utf-8", "replace")
+            forwarded_ok = is_ok_response(body)
             write_log(f"forwarded username={username} uin={uin or '-'} os={os_name or '-'} ver={ver or '-'} openid={openid or '-'} response={body[:300]}")
         except Exception as exc:
             write_log(f"forward failed username={username} error={exc}")
 
         self._capture_ok()
+        if ONESHOT and forwarded_ok:
+            write_log(f"oneshot complete username={username}, shutting down listener")
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def _websocket_ok(self):
         self.send_response(101)
@@ -164,5 +179,6 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == "__main__":
-    print(f"Listening on {LISTEN_HOST}:{LISTEN_PORT}, forwarding to {PANEL_API}")
+    suffix = " (oneshot)" if ONESHOT else ""
+    print(f"Listening on {LISTEN_HOST}:{LISTEN_PORT}, forwarding to {PANEL_API}{suffix}")
     ThreadedHTTPServer((LISTEN_HOST, LISTEN_PORT), CaptureHandler).serve_forever()
