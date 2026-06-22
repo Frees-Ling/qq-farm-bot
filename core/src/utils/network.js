@@ -6,6 +6,7 @@ const EventEmitter = require('node:events');
 
 const process = require('node:process');
 const WebSocket = require('ws');
+const { ProxyAgent } = require('proxy-agent');
 const { CONFIG } = require('../config/config');
 const { createScheduler } = require('../services/scheduler');
 const { RateLimiter } = require('../services/rate-limiter');
@@ -468,18 +469,37 @@ function startHeartbeat() {
 // ============ WebSocket 连接 ============
 let savedLoginCallback = null;
 let savedCode = null;
+let savedProxyUrl = '';
 
-function connect(code, onLoginSuccess) {
-    savedLoginCallback = onLoginSuccess;
-    if (code) savedCode = code;
-    const url = `${CONFIG.serverUrl}?platform=${CONFIG.platform}&os=${CONFIG.os}&ver=${CONFIG.clientVersion}&code=${savedCode}&openID=`;
+function normalizeProxyUrl(proxyUrl) {
+    const value = String(proxyUrl || '').trim();
+    if (!value) return '';
+    if (/^(https?|socks[45]?):\/\//i.test(value)) return value;
+    return `http://${value}`;
+}
 
-    ws = new WebSocket(url, {
+function buildWsOptions(proxyUrl) {
+    const options = {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13)',
             'Origin': 'https://gate-obt.nqf.qq.com',
         },
-    });
+    };
+    const normalizedProxy = normalizeProxyUrl(proxyUrl);
+    if (normalizedProxy) {
+        options.agent = new ProxyAgent(normalizedProxy);
+        log('绯荤粺', `[WS] 使用账号代理: ${normalizedProxy.replace(/:\/\/([^:@/]+):([^@/]+)@/, '://$1:***@')}`);
+    }
+    return options;
+}
+
+function connect(code, onLoginSuccess, options = {}) {
+    savedLoginCallback = onLoginSuccess;
+    if (code) savedCode = code;
+    if (hasOwn(options, 'proxyUrl')) savedProxyUrl = normalizeProxyUrl(options.proxyUrl);
+    const url = `${CONFIG.serverUrl}?platform=${CONFIG.platform}&os=${CONFIG.os}&ver=${CONFIG.clientVersion}&code=${savedCode}&openID=`;
+
+    ws = new WebSocket(url, buildWsOptions(savedProxyUrl));
 
     ws.binaryType = 'arraybuffer';
 
@@ -529,7 +549,7 @@ function reconnect(newCode) {
         ws = null;
     }
     userState.gid = 0;
-    connect(newCode || savedCode, savedLoginCallback);
+    connect(newCode || savedCode, savedLoginCallback, { proxyUrl: savedProxyUrl });
 }
 
 function getWs() { return ws; }

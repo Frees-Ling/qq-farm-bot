@@ -51,6 +51,7 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
         platform = (params.get("platform") or [""])[0]
         os_name = (params.get("os") or [""])[0]
         ver = (params.get("ver") or params.get("client_version") or [""])[0]
+        proxy_url = (params.get("proxyUrl") or params.get("proxy") or [""])[0]
         path_bits = [bit for bit in path_part.split("/") if bit]
         path_username = ""
         if path_bits:
@@ -95,6 +96,8 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
             api += f"&os={urllib.parse.quote(os_name)}"
         if ver:
             api += f"&ver={urllib.parse.quote(ver)}"
+        if proxy_url:
+            api += f"&proxyUrl={urllib.parse.quote(proxy_url)}"
 
         try:
             body = urllib.request.urlopen(api, timeout=10).read().decode("utf-8", "replace")

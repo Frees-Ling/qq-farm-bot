@@ -110,6 +110,7 @@ function createWorkerManager(options) {
             config: {
                 code: account.code,
                 platform: account.platform,
+                proxyUrl: account.proxyUrl || account.proxy || '',
                 runtimeConfig,
             },
         });

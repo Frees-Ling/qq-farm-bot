@@ -1161,6 +1161,7 @@ function addOrUpdateAccount(acc) {
             qq: acc.qq ? String(acc.qq) : (acc.uin ? String(acc.uin) : ''),
             avatar: acc.avatar || acc.avatarUrl || '',
             username: acc.username || '', // 保存用户名字段
+            proxyUrl: acc.proxyUrl || acc.proxy || '',
             createdAt: Date.now(),
             updatedAt: Date.now(),
         });

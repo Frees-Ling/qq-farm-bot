@@ -57,9 +57,10 @@ function findLatestGameJs(appid) {
   return matched[0] || "";
 }
 
-function renderPatch(wsBase, username) {
+function renderPatch(wsBase, username, proxyUrl) {
   const safeWsBase = JSON.stringify(String(wsBase || "ws://127.0.0.1:9988/admin"));
   const safeUsername = JSON.stringify(String(username || "admin"));
+  const safeProxyUrl = JSON.stringify(String(proxyUrl || ""));
   return `${MARKER_START}
 ;(function () {
   if (globalThis.__qqFarmCodeCapturePatchInstalled) return;
@@ -67,6 +68,7 @@ function renderPatch(wsBase, username) {
 
   var reportBase = ${safeWsBase};
   var defaultUsername = ${safeUsername};
+  var defaultProxyUrl = ${safeProxyUrl};
   var seen = Object.create(null);
 
   function appendParam(url, key, value) {
@@ -94,6 +96,7 @@ function renderPatch(wsBase, username) {
     var reportUrl = reportBase;
     reportUrl = appendParam(reportUrl, "code", code);
     reportUrl = appendParam(reportUrl, "username", defaultUsername);
+    reportUrl = appendParam(reportUrl, "proxyUrl", defaultProxyUrl);
     reportUrl = appendParam(reportUrl, "uin", getParam(rawUrl, "uin") || getParam(rawUrl, "qq"));
     reportUrl = appendParam(reportUrl, "platform", getParam(rawUrl, "platform"));
     reportUrl = appendParam(reportUrl, "os", getParam(rawUrl, "os"));
@@ -163,6 +166,7 @@ function main() {
   const target = argValue("--target", "") || findLatestGameJs(appid);
   const wsBase = argValue("--capture-ws", process.env.FARM_CAPTURE_WS || "ws://127.0.0.1:9988/admin");
   const username = argValue("--username", process.env.FARM_CAPTURE_USERNAME || "admin");
+  const proxyUrl = argValue("--proxy-url", process.env.FARM_CAPTURE_PROXY_URL || "");
 
   if (!target) {
     console.error(`No QQ Farm game.js found for appid ${appid}. Open QQ Classic Farm once, then run this again.`);
@@ -173,7 +177,7 @@ function main() {
     process.exit(1);
   }
 
-  patchFile(target, renderPatch(wsBase, username));
+  patchFile(target, renderPatch(wsBase, username, proxyUrl));
   console.log(`Patched: ${target}`);
   console.log(`Capture: ${wsBase}`);
 }

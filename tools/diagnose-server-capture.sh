@@ -23,6 +23,8 @@ fi
 dpkg -l 2>/dev/null | grep -Ei 'linuxqq|qq[[:space:]]' || true
 pgrep -af 'QQ|qq|vnc|Xvnc|xfce' 2>/dev/null || true
 ss -lntp 2>/dev/null | grep -E ':5901|:5902|:5903' || true
+tail -n 40 /tmp/qq-farm-linux-qq.out 2>/dev/null || true
+tail -n 40 /tmp/qq-farm-linux-qq.err 2>/dev/null || true
 
 echo
 echo "== services =="
@@ -48,6 +50,20 @@ for file in core/data/accounts.json data/accounts.json; do
     tail -n 80 "$file"
   fi
 done
+
+echo
+echo "== account proxy summary =="
+node - <<'NODE' 2>/dev/null || true
+const fs = require('fs');
+const path = fs.existsSync('core/data/accounts.json') ? 'core/data/accounts.json' : 'data/accounts.json';
+if (!fs.existsSync(path)) process.exit(0);
+const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+for (const a of data.accounts || []) {
+  const proxy = String(a.proxyUrl || a.proxy || '');
+  const masked = proxy.replace(/:\/\/([^:@/]+):([^@/]+)@/, '://$1:***@');
+  console.log(`${a.id || '-'} ${a.username || '-'} ${a.name || '-'} proxy=${masked || '-'}`);
+}
+NODE
 
 echo
 echo "== capture logs =="

@@ -441,7 +441,7 @@ async function startBot(config) {
     if (isRunning) return;
     isRunning = true;
 
-    const { code, platform, runtimeConfig } = config;
+    const { code, platform, runtimeConfig, proxyUrl } = config;
 
     CONFIG.platform = platform || 'qq';
 
@@ -576,7 +576,7 @@ async function startBot(config) {
         syncStatus();
     };
 
-    connect(code, onLoginSuccess);
+    connect(code, onLoginSuccess, { proxyUrl });
 
     // 启动定时状态同步
     workerScheduler.setIntervalTask('status_sync', 3000, syncStatus, { preventOverlap: true });

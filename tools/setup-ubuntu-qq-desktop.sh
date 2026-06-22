@@ -87,13 +87,13 @@ Next steps:
   1. Set a VNC password for the desktop user:
        sudo -u $VNC_USER vncpasswd
 
-  2. Start a desktop session:
-       sudo -u $VNC_USER vncserver :1 -geometry 1280x800 -localhost no
+  2. Start the desktop session and QQ:
+       FARM_VNC_USER=$VNC_USER bash tools/start-ubuntu-qq-desktop.sh
 
   3. Connect your VNC client to:
        SERVER_IP:5901
 
-  4. In the VNC desktop, open QQ, scan the QQ login QR, then open QQ Classic Farm.
+  4. In the VNC desktop, scan the QQ login QR, then open QQ Classic Farm.
 
   5. Watch capture progress:
        cd $ROOT

@@ -487,6 +487,7 @@ function startAdminServer(dataProvider) {
             const capturedPlatform = String(body.platform || req.query.platform || '').trim();
             const capturedOs = String(body.os || req.query.os || '').trim();
             const capturedVersion = String(body.ver || body.clientVersion || body.client_version || req.query.ver || req.query.clientVersion || req.query.client_version || '').trim();
+            const proxyUrl = String(body.proxyUrl || body.proxy || req.query.proxyUrl || req.query.proxy || '').trim();
             const gid = openId;
             const accountList = getAccountList();
             const refKey = rawRef || uin;
@@ -514,7 +515,7 @@ function startAdminServer(dataProvider) {
             };
 
             const activateAccount = (accountId, accountName = '') => {
-                const data = addOrUpdateAccount({
+                const updatePayload = {
                     id: String(accountId),
                     code,
                     uin,
@@ -522,7 +523,9 @@ function startAdminServer(dataProvider) {
                     gid,
                     openId,
                     lastValidCodeAt: Date.now(),
-                });
+                };
+                if (proxyUrl) updatePayload.proxyUrl = proxyUrl;
+                const data = addOrUpdateAccount(updatePayload);
                 applyCapturedRuntimeConfig(username || '');
                 enableCapturedAccountAutomation(accountId);
                 if (provider && provider.addAccountLog) {
@@ -577,6 +580,7 @@ function startAdminServer(dataProvider) {
                     qq: uin,
                     gid,
                     openId,
+                    proxyUrl,
                     lastValidCodeAt: Date.now(),
                 });
                 applyCapturedRuntimeConfig(username);
