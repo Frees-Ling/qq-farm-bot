@@ -80,6 +80,7 @@ echo "== patch logs =="
 tail -n 80 logs/patch.out.log 2>/dev/null || true
 tail -n 80 logs/patch.err.log 2>/dev/null || true
 journalctl -u qq-farm-code-patcher -n 80 --no-pager 2>/dev/null || true
+timeout 10 node tools/watch-qq-farm-code-capture.js --timeout-sec 1 --username diagnose 2>&1 || true
 
 echo
 echo "== QQ Farm game.js =="

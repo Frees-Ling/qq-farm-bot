@@ -16,35 +16,71 @@ function argValue(name, fallback = "") {
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(full, out);
-    } else if (entry.isFile() && entry.name === "game.js") {
-      out.push(full);
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    try {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, out);
+      } else if (entry.isFile() && entry.name === "game.js") {
+        out.push(full);
+      }
+    } catch {
+      // Ignore unreadable cache entries.
     }
   }
   return out;
+}
+
+function homeDirs() {
+  const dirs = new Set([os.homedir()]);
+  for (const dir of ["/root", "/home"]) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      const stat = fs.statSync(dir);
+      if (stat.isDirectory() && dir === "/root") dirs.add(dir);
+      if (stat.isDirectory() && dir === "/home") {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory()) dirs.add(path.join(dir, entry.name));
+        }
+      }
+    } catch {
+      // Ignore unreadable home roots.
+    }
+  }
+  return Array.from(dirs);
 }
 
 function candidateMiniappRoots() {
   const explicit = argValue("--src-root", "");
   if (explicit) return [explicit];
 
-  const home = os.homedir();
   const roots = [];
+  const extraRoots = String(process.env.FARM_MINIAPP_SRC_ROOTS || "")
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  roots.push(...extraRoots);
+
   if (process.env.APPDATA) {
     roots.push(path.join(process.env.APPDATA, "QQEX", "miniapp", "temps", "miniapp_src"));
   }
 
-  roots.push(
-    path.join(home, ".config", "QQEX", "miniapp", "temps", "miniapp_src"),
-    path.join(home, ".config", "QQ", "QQEX", "miniapp", "temps", "miniapp_src"),
-    path.join(home, ".local", "share", "QQEX", "miniapp", "temps", "miniapp_src"),
-    path.join(home, "snap", "qq", "current", ".config", "QQEX", "miniapp", "temps", "miniapp_src"),
-    path.join(home, ".wine", "drive_c", "users", os.userInfo().username, "AppData", "Roaming", "QQEX", "miniapp", "temps", "miniapp_src"),
-  );
-  return roots;
+  for (const home of homeDirs()) {
+    roots.push(
+      path.join(home, ".config", "QQEX", "miniapp", "temps", "miniapp_src"),
+      path.join(home, ".config", "QQ", "QQEX", "miniapp", "temps", "miniapp_src"),
+      path.join(home, ".local", "share", "QQEX", "miniapp", "temps", "miniapp_src"),
+      path.join(home, "snap", "qq", "current", ".config", "QQEX", "miniapp", "temps", "miniapp_src"),
+      path.join(home, ".wine", "drive_c", "users", path.basename(home), "AppData", "Roaming", "QQEX", "miniapp", "temps", "miniapp_src"),
+    );
+  }
+  return Array.from(new Set(roots));
 }
 
 function findLatestGameJs(appid) {

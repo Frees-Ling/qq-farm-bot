@@ -46,6 +46,9 @@ print_state() {
   find /root /home -path '*miniapp_src*1112386029*game.js' -type f 2>/dev/null | tail -n 5 || true
   echo "-- recent capture log --"
   tail -n 20 "$LOG_FILE" 2>/dev/null || true
+  echo "-- patch watcher log --"
+  tail -n 20 "$ROOT/logs/wait-capture-$USERNAME.out.log" 2>/dev/null || true
+  tail -n 20 "$ROOT/logs/wait-capture-$USERNAME.err.log" 2>/dev/null || true
 }
 
 echo "[1/4] Start bot/capture services if systemd is available"
