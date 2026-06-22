@@ -25,6 +25,10 @@ pgrep -af 'QQ|qq|vnc|Xvnc|xfce' 2>/dev/null || true
 ss -lntp 2>/dev/null | grep -E ':5901|:5902|:5903' || true
 tail -n 40 /tmp/qq-farm-linux-qq.out 2>/dev/null || true
 tail -n 40 /tmp/qq-farm-linux-qq.err 2>/dev/null || true
+tail -n 40 /tmp/qq-farm-open.out 2>/dev/null || true
+tail -n 40 /tmp/qq-farm-open.err 2>/dev/null || true
+tail -n 40 /tmp/qq-farm-open-trigger.out 2>/dev/null || true
+tail -n 40 /tmp/qq-farm-open-trigger.err 2>/dev/null || true
 
 echo
 echo "== services =="

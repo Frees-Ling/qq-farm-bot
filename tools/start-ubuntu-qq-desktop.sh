@@ -58,10 +58,10 @@ Connect your VNC client to:
 Inside the VNC desktop:
   1. QQ should already be open. If not, open a terminal and run: qq
   2. For each account from SSH, run:
-       bash tools/prepare-account-capture.sh <username> [proxyUrl]
+       bash tools/wait-account-capture.sh <username> [proxyUrl]
   3. Let that user scan the QQ login QR.
-  4. Open QQ Classic Farm from QQ.
-  5. If Farm opens, close and reopen it once so the patch can capture code.
+  4. The script will try to open QQ Classic Farm automatically.
+  5. If Farm does not appear in QQ, open QQ Classic Farm manually once.
 
 Watch from SSH:
   cd $ROOT

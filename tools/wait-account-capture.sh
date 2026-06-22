@@ -9,6 +9,7 @@ PROXY_URL="${2:-${FARM_CAPTURE_PROXY_URL:-}}"
 TIMEOUT_SEC="${FARM_CAPTURE_WAIT_TIMEOUT:-300}"
 CAPTURE_WS="${FARM_CAPTURE_WS:-ws://127.0.0.1:9988/${USERNAME:-admin}}"
 LOG_FILE="$ROOT/logs/code-capture.log"
+OPEN_INTERVAL_SEC="${FARM_OPEN_INTERVAL_SEC:-45}"
 
 if [ -z "$USERNAME" ]; then
   echo "Usage:"
@@ -72,12 +73,16 @@ FARM_CAPTURE_PROXY_URL="$PROXY_URL" \
 WATCH_PID="$!"
 trap 'kill "$WATCH_PID" >/dev/null 2>&1 || true' EXIT
 
+open_farm() {
+  FARM_CAPTURE_USERNAME="$USERNAME" bash tools/open-qq-farm.sh >/tmp/qq-farm-open-trigger.out 2>/tmp/qq-farm-open-trigger.err || true
+}
+
 cat <<EOF
 
 Now use the server VNC desktop:
   1. Make sure QQ is open and logged in by this user scanning the QQ QR.
-  2. Open QQ Classic Farm.
-  3. If it opens but no success appears, close and reopen QQ Classic Farm once.
+  2. This script will try to open QQ Classic Farm automatically.
+  3. If Farm does not appear in QQ, open QQ Classic Farm manually once.
 
 Waiting up to ${TIMEOUT_SEC}s for:
   forwarded username=$USERNAME ... response={"ok":true,...}
@@ -86,6 +91,7 @@ EOF
 echo "[4/4] Waiting for capture success"
 STARTED_AT="$(date +%s)"
 LAST_STATE_AT=0
+LAST_OPEN_AT=0
 while true; do
   if has_success; then
     echo
@@ -108,6 +114,10 @@ while true; do
   if [ $((now - LAST_STATE_AT)) -ge 30 ]; then
     print_state
     LAST_STATE_AT="$now"
+  fi
+  if [ $((now - LAST_OPEN_AT)) -ge "$OPEN_INTERVAL_SEC" ]; then
+    open_farm
+    LAST_OPEN_AT="$now"
   fi
   sleep 3
 done
