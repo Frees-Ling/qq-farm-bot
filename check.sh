@@ -483,17 +483,88 @@ echo "  journalctl -u qq-farm-sniff -f   # 实时sniff日志"
 echo "  bash install.sh                   # 一键重装"
 echo "================================================"
 
-# 如果传了 --fix,自动修复可修复项
-if [ "$1" = "--fix" ] && [ "$FAIL" -gt 0 ]; then
+# 自动清理测试数据（无论 --fix 还是单独调用）
+cleanup_test_data() {
+    local cleaned=0
+    echo ""
+    echo "--- 清理测试数据 ---"
+
+    # 1. 清空capture-system.log中的测试记录（diag_ / check_test_ / install_test）
+    if [ -f "core/data/capture-system.log" ]; then
+        BEFORE=$(wc -l < core/data/capture-system.log 2>/dev/null || echo 0)
+        grep -v "diag_\|check_test_\|install_test" core/data/capture-system.log > /tmp/capture-clean.log 2>/dev/null
+        mv /tmp/capture-clean.log core/data/capture-system.log
+        AFTER=$(wc -l < core/data/capture-system.log 2>/dev/null || echo 0)
+        REMOVED=$((BEFORE - AFTER))
+        if [ "$REMOVED" -gt 0 ]; then
+            echo "  ✅ 已清理 $REMOVED 条测试日志记录"
+            cleaned=$((cleaned+1))
+        fi
+    fi
+
+    # 2. 重启面板清空内存中的pending队列（所有未认领的test code自动消失）
+    #    但先把已认领的正常记录留下
+    if systemctl is-active --quiet qq-farm-bot 2>/dev/null; then
+        # 通过API删除已认领的测试Code账号
+        TOKEN=$(curl -s -X POST http://localhost:3000/api/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"Admin@123456"}' 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
+        if [ -n "$TOKEN" ]; then
+            ACCOUNTS=$(curl -s http://localhost:3000/api/accounts -H "x-admin-token: $TOKEN" 2>/dev/null || echo "")
+            echo "$ACCOUNTS" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for a in d.get('data',{}).get('accounts',[]):
+        name = a.get('name','')
+        code = a.get('code','')
+        # 标记测试账号（diag_/check_test_/install_test开头的code创建的）
+        if code.startswith('diag_') or code.startswith('check_test_') or code.startswith('install_test'):
+            print(f'TEST_ACCOUNT:{a[\"id\"]}:{name}')
+except: pass
+" 2>/dev/null | while read line; do
+                if echo "$line" | grep -q "TEST_ACCOUNT:"; then
+                    AID=$(echo $line | cut -d: -f2)
+                    ANAME=$(echo $line | cut -d: -f3)
+                    curl -s -X DELETE "http://localhost:3000/api/accounts/$AID" -H "x-admin-token: $TOKEN" >/dev/null 2>&1
+                    echo "  ✅ 已删除测试账号: $ANAME (ID=$AID)"
+                    cleaned=$((cleaned+1))
+                fi
+            done
+        fi
+        # 重启面板清空内存pending队列
+        systemctl restart qq-farm-bot 2>/dev/null
+        echo "  ✅ 已清空pending队列"
+        cleaned=$((cleaned+1))
+    fi
+
+    if [ "$cleaned" -gt 0 ]; then
+        echo "  ✅ 清理完成"
+    else
+        echo "  无需清理"
+    fi
+}
+
+# 如果传了 --fix 参数
+if [ "$1" = "--fix" ]; then
     echo ""
     echo "--- 自动修复 ---"
     if ! systemctl is-active --quiet qq-farm-bot 2>/dev/null; then
         echo "⏳ 启动面板..."
         systemctl start qq-farm-bot
+        sleep 3
     fi
     if ! systemctl is-active --quiet qq-farm-sniff 2>/dev/null; then
         echo "⏳ 启动sniff..."
         systemctl start qq-farm-sniff
     fi
+    # 清理测试数据
+    cleanup_test_data
+    echo ""
     echo "✅ 修复完成，重新运行 bash check.sh 确认"
+fi
+
+# 如果传了 --clean，只清理测试数据不修其他
+if [ "$1" = "--clean" ]; then
+    cleanup_test_data
 fi
