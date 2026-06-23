@@ -615,9 +615,16 @@ function startAdminServer(dataProvider) {
     app.post('/api/qr/auth-code', async (req, res, next) => {
         if (process.env.FARM_DISABLE_WEB_QQ_QR === '1') return next();
         try {
-            const { ticket, appid } = req.body || {};
+            const { ticket, appid, uin: reqUin } = req.body || {};
             if (!ticket) return res.status(400).json({ ok: false, error: 'Missing ticket' });
             const result = await MiniProgramLoginSession.getAuthCodeResult(String(ticket), appid || '1112386029');
+            // 即使code兑换失败（-3000），只要前端传了uin就返回成功
+            if ((!result || !result.ok || !result.code) && reqUin) {
+                return res.json({
+                    ok: true,
+                    data: { code: '', uin: String(reqUin), authOnly: true, error: (result && result.error) || 'QQ扫码验证成功但未返回农场code' }
+                });
+            }
             if (!result || !result.ok || !result.code) {
                 return res.status(400).json({
                     ok: false,
@@ -922,7 +929,25 @@ function startAdminServer(dataProvider) {
         } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
     });
 
-    // ============ QQ手机抓包API（已移至下方增强版） ============
+    // ============ QQ手机抓包API ============
+
+    app.post('/api/qq-phone-capture/start', (req, res) => {
+        try {
+            const currentUser = req.currentUser || {};
+            const username = String(currentUser.username || 'admin').trim() || 'admin';
+            const accountName = String((req.body && req.body.name) || '').trim();
+            const panelPort = CONFIG.adminPort || 3000;
+            const data = phoneCapture.startCapture({
+                username,
+                accountName,
+                panelApi: `http://127.0.0.1:${panelPort}/api/code-capture`,
+                port: process.env.FARM_PHONE_PROXY_PORT || 8899,
+            });
+            return res.json({ ok: true, data });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    });
 
     app.get('/api/qq-phone-capture/status', (req, res) => {
         try {

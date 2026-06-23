@@ -115,6 +115,16 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
         nick: result.nickname || '',
       })
     }
+    else if (codeResult.authOnly && codeResult.uin) {
+      stopQqCheck()
+      stopQqCaptureCheck()
+      qqLoginStore.stopPhoneCapture()
+      const qqName = qqAccountName.value.trim() || ('QQ' + codeResult.uin)
+      form.name = qqName
+      form.platform = 'qq'
+      activeTab.value = 'manual'
+      errorMessage.value = '✅ QQ验证成功(' + codeResult.uin + ')! 请在手机QQ打开QQ经典农场获取Code，粘贴到下方'
+    }
   }
 }, 2000, { immediate: false })
 

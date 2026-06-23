@@ -56,20 +56,24 @@ export const useQqLoginStore = defineStore('qq-login', () => {
 
     try {
       const res = await api.post('/api/qr/create', {}, { silent: true })
+      console.log('[QQ扫码] getQRCode 返回:', res.data)
       const data = unwrapOk<{ code: string, image: string, url: string }>(res.data as ApiResult<any>, '获取 QQ 登录二维码失败')
       loginCode.value = data.code || ''
       qrCode.value = data.image || ''
       qrUrl.value = data.url || ''
+      console.log('[QQ扫码] loginCode:', loginCode.value ? '已获取' : '空')
+      console.log('[QQ扫码] QR图片:', qrCode.value ? qrCode.value.substring(0, 50) + '...' : '空')
       setDiagnostic('create', {
-        loginCode: loginCode.value,
-        url: qrUrl.value,
-        isFarmOpenUrl: qrUrl.value.includes('m.q.qq.com'),
+        loginCode: loginCode.value ? `${loginCode.value.substring(0, 10)}...` : '空',
+        hasQR: !!qrCode.value,
+        qrUrl: qrUrl.value,
       })
       status.value = 'ready'
-      statusMessage.value = '请使用手机 QQ 扫码并确认登录'
+      statusMessage.value = '请使用手机 QQ 扫码登录'
       return true
     }
     catch (e: any) {
+      console.log('[QQ扫码] ❌ 生成二维码失败:', e.message)
       status.value = 'error'
       errorMessage.value = getErrorMessage(e, '获取 QQ 登录二维码失败')
       return false
@@ -83,13 +87,14 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     if (!loginCode.value)
       return { success: false }
 
-    status.value = status.value === 'confirming' ? 'confirming' : 'scanning'
-    statusMessage.value = status.value === 'confirming' ? '已扫码，请在手机 QQ 确认登录' : '正在等待扫码...'
+    // 不改变 status，保持当前状态（ready 表示等待扫码）
+    // 仅在 API 明确返回已扫码时才改变状态
 
     try {
       const res = await api.post('/api/qr/check', { code: loginCode.value }, { silent: true })
       const data = unwrapOk<any>(res.data as ApiResult<any>, '检查 QQ 扫码状态失败')
       const remoteStatus = String(data.status || '')
+      console.log(`[QQ扫码] checkLogin -> status=${remoteStatus}, qqCode=${data.qqCode}, hasTicket=${!!data.ticket}`)
       setDiagnostic('check', {
         status: remoteStatus || 'Wait',
         qqCode: data.qqCode,
@@ -100,6 +105,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       })
 
       if (remoteStatus === 'OK' && data.ticket) {
+        console.log('[QQ扫码] ✅ 扫码成功! ticket, uin:', data.uin)
         status.value = 'success'
         statusMessage.value = 'QQ 扫码成功，正在换取农场 code...'
         return {
@@ -112,24 +118,29 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       }
 
       if (remoteStatus === 'Used') {
+        console.log('[QQ扫码] ⚠️ 二维码已过期')
         status.value = 'error'
         errorMessage.value = '二维码已使用或已过期，请刷新二维码'
         return { success: false, status: remoteStatus }
       }
 
       if (remoteStatus === 'Error') {
-        status.value = 'error'
-        errorMessage.value = data.msg || 'QQ 扫码状态异常，请刷新二维码'
+        // -1001 正常（未扫码），不做任何提示
+        console.log('[QQ扫码] 等待扫码中... (api:', data.qqCode || 'no code', ')')
+        // 状态保持 'ready'，不显示错误
+        status.value = 'ready'
+        statusMessage.value = '等待手机 QQ 扫码...'
         return { success: false, status: remoteStatus }
       }
 
-      status.value = 'confirming'
+      status.value = 'ready'
       statusMessage.value = '等待手机 QQ 扫码确认'
       return { success: false, status: remoteStatus || 'Wait' }
     }
     catch (e: any) {
-      status.value = 'error'
-      errorMessage.value = getErrorMessage(e, '检查 QQ 扫码状态失败')
+      console.log('[QQ扫码] ❌ 请求失败:', e.message)
+      status.value = 'ready'
+      statusMessage.value = '等待扫码中...'
       return { success: false }
     }
   }
@@ -145,9 +156,9 @@ export const useQqLoginStore = defineStore('qq-login', () => {
       return true
     }
     catch (e: any) {
-      errorMessage.value = '服务器监听未启动，请联系管理员'
-      setDiagnostic('phone-capture-start-error', {
-        error: getErrorMessage(e, '服务器监听启动失败'),
+      // 抓包服务不可用是正常的（没装mitmdump），不报错只记录
+      setDiagnostic('phone-capture-start-not-available', {
+        info: '抓包服务不可用，扫码后需要手动打开QQ农场',
       })
       return false
     }
@@ -200,7 +211,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     errorMessage.value = ''
   }
 
-  async function getFarmCode(ticket: string, options: { quietFailure?: boolean } = {}): Promise<{ success: boolean, code?: string }> {
+  async function getFarmCode(ticket: string, options: { quietFailure?: boolean } = {}): Promise<{ success: boolean, code?: string, uin?: string, authOnly?: boolean }> {
     if (!ticket)
       return { success: false }
 
@@ -210,15 +221,25 @@ export const useQqLoginStore = defineStore('qq-login', () => {
 
     try {
       const res = await api.post('/api/qr/auth-code', { ticket, appid: '1112386029' }, { silent: true })
-      const data = unwrapOk<{ code: string }>(res.data as ApiResult<any>, '换取 QQ 农场 code 失败')
+      const data = unwrapOk<any>(res.data as ApiResult<any>, '换取 QQ 农场 code 失败')
       setDiagnostic('auth-code', {
         returnedCode: data.code ? 'present' : '',
+        authOnly: !!data.authOnly,
+        uin: data.uin || '',
       })
+      if (data.authOnly) {
+        // 验证成功但没拿到农场code（-3000），通知用户
+        console.log('[QQ扫码] ✅ QQ验证成功, uin:', data.uin, '但未获取农场code')
+        status.value = 'farm_waiting'
+        statusMessage.value = `QQ验证成功 (${data.uin})！请在手机QQ打开QQ经典农场，然后手动输入Code`
+        return { success: true, code: '', uin: data.uin || '', authOnly: true }
+      }
       if (!data.code) {
         status.value = 'error'
         errorMessage.value = 'QQ 授权成功，但没有返回农场 code'
         return { success: false }
       }
+      console.log('[QQ扫码] ✅ 获取到农场code')
       status.value = 'success'
       statusMessage.value = '已获取 QQ 农场 code，正在创建账号...'
       return { success: true, code: data.code }
