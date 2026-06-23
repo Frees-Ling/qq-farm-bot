@@ -1,0 +1,24 @@
+[Unit]
+Description=QQ Farm Bot Panel + Code Capture
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/qq-farm-bot
+Environment=ADMIN_PORT=3000
+Environment=FARM_PANEL_API=http://127.0.0.1:3000/api/code-capture
+Environment=FARM_CAPTURE_USERNAME=admin
+
+# 先启动sniff9988，再启动面板
+ExecStartPre=/usr/bin/bash -c '/usr/bin/python3 tools/sniff9988.py & sleep 2'
+ExecStart=/usr/bin/node core/client.js
+Restart=always
+RestartSec=3
+
+# 停止时也清理sniff
+ExecStopPost=/usr/bin/bash -c 'kill $(lsof -t -i:9988) 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

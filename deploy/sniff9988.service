@@ -1,0 +1,17 @@
+[Unit]
+Description=QQ Farm Bot Code Capture Receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/qq-farm-bot
+Environment=FARM_PANEL_API=http://127.0.0.1:3000/api/code-capture
+Environment=FARM_CAPTURE_USERNAME=admin
+ExecStart=/usr/bin/python3 tools/sniff9988.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
