@@ -228,12 +228,71 @@ function handleMessage(data) {
 // ============ 通知处理器映射 ============
 const notifyHandlers = new Map();
 
+// 尝试解析版本号并递增
+function bumpClientVersion(currentVer) {
+    const str = String(currentVer || '').trim();
+    // 尝试匹配 X.Y.Z.W 或 X.Y.Z.W_YYYYMMDD
+    const match = str.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)(?:_(\d+))?$/);
+    if (!match) {
+        // 无法解析版本号，直接跳一个大版本
+        return '1.15.0.0';
+    }
+    const major = parseInt(match[1], 10);
+    const minor = parseInt(match[2], 10);
+    const build = parseInt(match[3], 10);
+    const patch = parseInt(match[4], 10);
+    const dateSuffix = match[5] || '';
+    // 递增: 先试 patch+1, 如果超过100则 build+1
+    let newPatch = patch + 1;
+    let newBuild = build;
+    if (newPatch > 100) {
+        newPatch = 0;
+        newBuild += 1;
+    }
+    let newVer = `${major}.${minor}.${newBuild}.${newPatch}`;
+    if (dateSuffix) {
+        // 如果有日期后缀，更新为今天
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        newVer += `_${y}${m}${d}`;
+    }
+    return newVer;
+}
+
+// 版本过低自动重试次数（防止无限循环）
+let versionBumpRetries = 0;
+const MAX_VERSION_BUMPS = 5;
+
 notifyHandlers.set('Kickout', (eventBody) => {
     const notify = types.KickoutNotify.decode(eventBody);
-    log('推送', `原因: ${notify.reason_message || '未知'}`);
+    const reason = String(notify.reason_message || '未知');
+    log('推送', `原因: ${reason}`);
+
+    // 如果是因为版本过低，自动递增版本号并重连
+    if ((reason.includes('版本过低') || reason.includes('version')) && versionBumpRetries < MAX_VERSION_BUMPS) {
+        const oldVersion = CONFIG.clientVersion;
+        CONFIG.clientVersion = bumpClientVersion(CONFIG.clientVersion);
+        versionBumpRetries++;
+        log('系统', `客户端版本过低 (${oldVersion})，自动递增至 ${CONFIG.clientVersion} (第${versionBumpRetries}次重试)，断开连接以触发重连...`);
+        // 断开连接让上层的 auto_reconnect 逻辑用新版本重连
+        if (ws) {
+            try {
+                ws.close();
+            } catch {}
+        }
+        return;
+    }
+
+    // 版本重试耗尽，走正常踢下线流程
+    if (reason.includes('版本过低') && versionBumpRetries >= MAX_VERSION_BUMPS) {
+        log('系统', `已达最大版本重试次数 (${MAX_VERSION_BUMPS})，放弃重连`);
+    }
+
     networkEvents.emit('kickout', {
         type: 'Kickout',
-        reason: notify.reason_message || '未知',
+        reason,
     });
 });
 
@@ -390,6 +449,9 @@ function sendLogin(onLoginSuccess) {
         try {
             const reply = types.LoginReply.decode(bodyBytes);
             if (reply.basic) {
+                // 登录成功，重置版本过低重试计数器
+                versionBumpRetries = 0;
+
                 clearWsErrorState();
                 userState.gid = toNum(reply.basic.gid);
                 userState.name = reply.basic.name || '未知';
@@ -415,6 +477,23 @@ function sendLogin(onLoginSuccess) {
                 if (reply.time_now_millis) {
                     syncServerTime(toNum(reply.time_now_millis));
                     console.warn(`  时间:   ${new Date(toNum(reply.time_now_millis)).toLocaleString()}`);
+                }
+                // 记录并自动更新服务器推荐的版本信息
+                if (reply.version_info) {
+                    const vi = reply.version_info;
+                    console.warn(`  版本状态: ${vi.status || 0}`);
+                    console.warn(`  推荐版本: ${vi.version_recommend || '(无)'}`);
+                    console.warn(`  强制版本: ${vi.version_force || '(无)'}`);
+                    console.warn(`  资源版本: ${vi.res_version || '(无)'}`);
+                    const recommended = vi.version_recommend || '';
+                    const forced = vi.version_force || '';
+                    if (forced && forced !== CONFIG.clientVersion) {
+                        log('系统', `服务器强制版本: ${forced} (当前: ${CONFIG.clientVersion})，自动更新`);
+                        CONFIG.clientVersion = forced;
+                    } else if (recommended && recommended !== CONFIG.clientVersion) {
+                        log('系统', `服务器推荐版本: ${recommended} (当前: ${CONFIG.clientVersion})，自动更新`);
+                        CONFIG.clientVersion = recommended;
+                    }
                 }
                 console.warn('===============================');
                 console.warn('');
@@ -461,6 +540,19 @@ function startHeartbeat() {
             try {
                 const reply = types.HeartbeatReply.decode(replyBody);
                 if (reply.server_time) syncServerTime(toNum(reply.server_time));
+                // 记录并自动更新服务器推荐的版本信息
+                if (reply.version_info) {
+                    const vi = reply.version_info;
+                    const recommended = vi.version_recommend || '';
+                    const forced = vi.version_force || '';
+                    if (forced && forced !== CONFIG.clientVersion) {
+                        log('版本', `服务器强制版本: ${forced} (当前: ${CONFIG.clientVersion})，自动更新`);
+                        CONFIG.clientVersion = forced;
+                    } else if (recommended && recommended !== CONFIG.clientVersion) {
+                        log('版本', `服务器推荐版本: ${recommended} (当前: ${CONFIG.clientVersion})`);
+                        CONFIG.clientVersion = recommended;
+                    }
+                }
             } catch { }
         });
     });

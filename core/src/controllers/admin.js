@@ -1974,7 +1974,7 @@ function startAdminServer(dataProvider) {
                 ? store.getRuntimeConfig(currentUser.username)
                 : {
                     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
-                    clientVersion: '1.12.1.6',
+                    clientVersion: '1.13.0.0',
                     os: 'iOS',
                     osVersion: 'iOS 26.2.1',
                     networkType: 'wifi',

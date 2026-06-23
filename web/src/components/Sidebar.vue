@@ -7,6 +7,7 @@ import api from '@/api'
 import AccountModal from '@/components/AccountModal.vue'
 import RemarkModal from '@/components/RemarkModal.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import WxLoginModal from '@/components/WxLoginModal.vue'
 
 import { menuRoutes } from '@/router/menu'
 import { getPlatformClass, getPlatformLabel, useAccountStore } from '@/stores/account'
@@ -24,6 +25,7 @@ const { status, realtimeConnected } = storeToRefs(statusStore)
 
 const showAccountDropdown = ref(false)
 const showAccountModal = ref(false)
+const showQrLoginModal = ref(false)
 const showRemarkModal = ref(false)
 const accountToEdit = ref<any>(null)
 const wsErrorNotifiedAt = ref<Record<string, number>>({})
@@ -530,7 +532,15 @@ async function handleRenew() {
               @click="!isAddAccountDisabled && (showAccountModal = true); showAccountDropdown = false"
             >
               <div class="i-carbon-add" />
-              <span>添加账号</span>
+              <span>手动Code添加</span>
+            </button>
+            <button
+              class="w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-700/50"
+              :style="{ color: 'var(--theme-primary)' }"
+              @click="showQrLoginModal = true; showAccountDropdown = false"
+            >
+              <div class="i-carbon-qr-code" />
+              <span>QQ/微信扫码</span>
             </button>
           </div>
         </div>
@@ -597,6 +607,12 @@ async function handleRenew() {
     :edit-data="accountToEdit"
     @close="showAccountModal = false; accountToEdit = null"
     @saved="handleAccountSaved"
+  />
+
+  <WxLoginModal
+    :show="showQrLoginModal"
+    @close="showQrLoginModal = false"
+    @saved="() => { showQrLoginModal = false; handleAccountSaved() }"
   />
 
   <RemarkModal

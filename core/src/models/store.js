@@ -999,7 +999,7 @@ const LEGACY_CLIENT_VERSIONS = new Set([
 const DEFAULT_RUNTIME_CONFIG = {
     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
     platform: 'qq',
-    clientVersion: '1.12.1.6',
+    clientVersion: '1.13.0.0',
     os: 'iOS',
     osVersion: 'iOS 26.2.1',
     networkType: 'wifi',
