@@ -68,6 +68,14 @@ export const menuRoutes: MenuItem[] = [
     hidden: true,
   },
   {
+    path: 'proxy-tutorial',
+    name: 'proxyTutorial',
+    label: '抓包教程',
+    icon: 'i-carbon-education',
+    component: () => import('@/views/ProxyTutorial.vue'),
+    hidden: true,
+  },
+  {
     path: 'admin',
     name: 'admin',
     label: '后台',

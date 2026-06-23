@@ -2,6 +2,7 @@
 import type { ApiResult } from '@/api/result'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/api'
 import { getErrorMessage } from '@/api/error'
 import { unwrapOk } from '@/api/result'
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'saved'])
 
+const router = useRouter()
 const wxLoginStore = useWxLoginStore()
 const qqLoginStore = useQqLoginStore()
 
@@ -122,8 +124,9 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
       const qqName = qqAccountName.value.trim() || ('QQ' + codeResult.uin)
       form.name = qqName
       form.platform = 'qq'
+      // 跳到手动填码，但显示更详细的指引
       activeTab.value = 'manual'
-      errorMessage.value = '✅ QQ验证成功(' + codeResult.uin + ')! 请在手机QQ打开QQ经典农场获取Code，粘贴到下方'
+      errorMessage.value = '✅ QQ验证成功(' + codeResult.uin + ')! Code需要通过抓包获取。点击下方「查看抓包教程」了解如何用手机代理捕获Code'
     }
   }
 }, 2000, { immediate: false })
@@ -543,13 +546,18 @@ watch(activeTab, (tab) => {
             </label>
           </div>
 
-          <div class="flex justify-end gap-2 pt-4">
-            <BaseButton variant="outline" @click="close">
-              取消
+          <div class="flex items-center justify-between pt-4">
+            <BaseButton variant="text" size="sm" @click="router.push('/proxy-tutorial')">
+              📖 查看抓包教程
             </BaseButton>
-            <BaseButton variant="primary" :loading="loading" @click="submitManual">
-              {{ editData ? '保存' : '添加' }}
-            </BaseButton>
+            <div class="flex gap-2">
+              <BaseButton variant="outline" @click="close">
+                取消
+              </BaseButton>
+              <BaseButton variant="primary" :loading="loading" @click="submitManual">
+                {{ editData ? '保存' : '添加' }}
+              </BaseButton>
+            </div>
           </div>
         </div>
       </div>
