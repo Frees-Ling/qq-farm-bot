@@ -9,6 +9,7 @@
     "lint:core": "pnpm -C core lint",
     "lint:web": "pnpm -C web lint",
     "build:web": "pnpm -C web build",
+    "build:web-fast": "pnpm -C web exec vite build --mode production",
     "build": "pnpm build:web",
     "package:win": "pnpm build:web && pnpm -C core build:win",
     "package:linux": "pnpm build:web && pnpm -C core build:linux",
