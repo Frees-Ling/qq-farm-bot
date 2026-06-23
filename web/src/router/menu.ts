@@ -5,6 +5,7 @@ export interface MenuItem {
   icon: string
   component: () => Promise<any>
   adminOnly?: boolean
+  hidden?: boolean   // 不在侧边栏显示但保留路由
 }
 
 export const menuRoutes: MenuItem[] = [
@@ -56,6 +57,7 @@ export const menuRoutes: MenuItem[] = [
     label: '微信扫码',
     icon: 'i-carbon-qr-code',
     component: () => import('@/views/WechatAccounts.vue'),
+    hidden: true,
   },
   {
     path: 'capture',
@@ -63,6 +65,7 @@ export const menuRoutes: MenuItem[] = [
     label: '抓包添加',
     icon: 'i-carbon-network-4',
     component: () => import('@/views/CaptureAddAccount.vue'),
+    hidden: true,
   },
   {
     path: 'admin',

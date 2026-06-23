@@ -689,8 +689,11 @@ function startAdminServer(dataProvider) {
             const wxConfig = userStore.getWxConfig ? userStore.getWxConfig() : {};
             if (!wxConfig.appId) {
                 const mockUuid = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                const mockUrl = `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${mockUuid}`;
-                return res.json({ ok: true, data: { uuid: mockUuid, qrImageUrl: mockUrl, mock: true } });
+                // 使用qrcode生成真实的二维码图片（指向本地的mock回调）
+                const QRCode = require('qrcode');
+                const callbackUrl = `http://localhost:${CONFIG.adminPort || 3000}/api/wx-qr/callback?code=${mockUuid}`;
+                const qrDataUrl = await QRCode.toDataURL(callbackUrl, { width: 300, margin: 1, errorCorrectionLevel: 'M' });
+                return res.json({ ok: true, data: { uuid: mockUuid, qrImageUrl: qrDataUrl, mock: true } });
             }
             const { appId, secret } = wxConfig;
             const tokenRes = await fetch(`https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${secret}`);

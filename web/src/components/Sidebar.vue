@@ -242,7 +242,7 @@ const connectionStatus = computed(() => {
 const navItems = computed(() => {
   const isAdmin = userStore.isAdmin
   return menuRoutes
-    .filter(item => item.path !== 'accounts' && (!item.adminOnly || isAdmin))
+    .filter(item => !item.hidden && item.path !== 'accounts' && (!item.adminOnly || isAdmin))
     .map(item => ({
       path: item.path ? `/${item.path}` : '/',
       label: item.label,
