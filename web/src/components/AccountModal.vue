@@ -267,7 +267,7 @@ const { pause: stopPcFarmCheck, resume: startPcFarmCheck } = useIntervalFn(async
   if (!pcFarmWaiting.value) return
   try {
     // 轮询待认领的Code
-    const res = await api.post('/api/pending-code/claim')
+    const res = await api.post('/api/pending-code/claim', {}, { silent: true })
     if (res.data?.ok && res.data?.data?.code) {
       // 认领到Code！创建账号
       const code = res.data.data.code
