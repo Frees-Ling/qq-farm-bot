@@ -994,12 +994,16 @@ function deleteUserOfflineReminder(username) {
 const LEGACY_CLIENT_VERSIONS = new Set([
     '1.8.85.127',
     '1.7.0.6_20260313',
+    '1.12.1.6',        // 旧无日期格式
+    '1.13.0.0',
+    '1.15.0.0',
+    '1.20.0.0',
 ]);
 
 const DEFAULT_RUNTIME_CONFIG = {
     serverUrl: 'wss://gate-obt.nqf.qq.com/prod/ws',
     platform: 'qq',
-    clientVersion: '1.13.0.0',
+    clientVersion: '1.12.1.6_20260623',
     os: 'iOS',
     osVersion: 'iOS 26.2.1',
     networkType: 'wifi',

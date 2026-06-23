@@ -228,20 +228,28 @@ function handleMessage(data) {
 // ============ 通知处理器映射 ============
 const notifyHandlers = new Map();
 
-// 尝试解析版本号并递增
+// 尝试获取今天的日期后缀
+function getTodayDateSuffix() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `_${y}${m}${d}`;
+}
+
+// 尝试解析版本号并递增（始终包含日期后缀）
 function bumpClientVersion(currentVer) {
     const str = String(currentVer || '').trim();
     // 尝试匹配 X.Y.Z.W 或 X.Y.Z.W_YYYYMMDD
     const match = str.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)(?:_(\d+))?$/);
     if (!match) {
-        // 无法解析版本号，直接跳一个大版本
-        return '1.15.0.0';
+        // 无法解析版本号，生成一个带今天日期的版本
+        return `1.12.1.6${getTodayDateSuffix()}`;
     }
     const major = parseInt(match[1], 10);
     const minor = parseInt(match[2], 10);
     const build = parseInt(match[3], 10);
     const patch = parseInt(match[4], 10);
-    const dateSuffix = match[5] || '';
     // 递增: 先试 patch+1, 如果超过100则 build+1
     let newPatch = patch + 1;
     let newBuild = build;
@@ -249,16 +257,8 @@ function bumpClientVersion(currentVer) {
         newPatch = 0;
         newBuild += 1;
     }
-    let newVer = `${major}.${minor}.${newBuild}.${newPatch}`;
-    if (dateSuffix) {
-        // 如果有日期后缀，更新为今天
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        newVer += `_${y}${m}${d}`;
-    }
-    return newVer;
+    // 始终包含今天的日期后缀
+    return `${major}.${minor}.${newBuild}.${newPatch}${getTodayDateSuffix()}`;
 }
 
 // 版本过低自动重试次数（防止无限循环）
