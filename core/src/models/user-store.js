@@ -554,6 +554,14 @@ function findOrCreateOAuthUser(type, openid, nickname, faceimg) {
     };
 }
 
+// 微信配置
+function getWxConfig() {
+    try {
+        const storeData = JSON.parse(fs.readFileSync(getDataFile('store.json'), 'utf8') || '{}');
+        return (storeData && storeData.wxConfig) ? storeData.wxConfig : {};
+    } catch { return {}; }
+}
+
 initDefaultAdmin();
 
 module.exports = {
@@ -573,5 +581,6 @@ module.exports = {
     changePassword,
     saveWxLoginConfig,
     getWxLoginConfig,
-    findOrCreateOAuthUser
+    findOrCreateOAuthUser,
+    getWxConfig,
 };

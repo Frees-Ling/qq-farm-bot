@@ -275,9 +275,32 @@ function markCaptured(sessionId = '', username = '', result = {}) {
     return publicSession(session);
 }
 
+// 微信QR session管理
+const wxQrSessions = {};
+
+function registerWxQRSession(uuid) {
+    wxQrSessions[uuid] = { status: 'wait', code: '', openId: '', createdAt: Date.now() };
+}
+
+function unregisterWxQRSession(uuid) {
+    delete wxQrSessions[uuid];
+}
+
+function getWxQRSessions() {
+    return wxQrSessions;
+}
+
+function updateWxQRSession(uuid, data) {
+    if (wxQrSessions[uuid]) Object.assign(wxQrSessions[uuid], data);
+}
+
 module.exports = {
     startCapture,
     getStatus,
     stopCapture,
     markCaptured,
+    registerWxQRSession,
+    unregisterWxQRSession,
+    getWxQRSessions,
+    updateWxQRSession,
 };

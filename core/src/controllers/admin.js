@@ -267,13 +267,14 @@ function startAdminServer(dataProvider) {
         res.json({ ok: true, data: { token, role: 'admin', card: null, user: { username: 'admin' } } });
     });
 
-    // 注册接口
+    // 注册接口（支持邀请码/卡密）
     app.post('/api/register', (req, res) => {
-        const { username, password, cardCode } = req.body || {};
-        if (!username || !password || !cardCode) {
-            return res.status(400).json({ ok: false, error: '请填写完整信息' });
+        const { username, password, inviteCode, cardCode } = req.body || {};
+        const code = inviteCode || cardCode;
+        if (!username || !password || !code) {
+            return res.status(400).json({ ok: false, error: '请填写完整信息（用户名、密码、邀请码/卡密）' });
         }
-        const result = userStore.registerUser(username, password, cardCode);
+        const result = userStore.registerUser(username, password, code);
         if (!result.ok) {
             return res.status(400).json(result);
         }
@@ -659,7 +660,7 @@ function startAdminServer(dataProvider) {
     app.post('/api/code-capture', codeCaptureHandler);
 
     app.use('/api', (req, res, next) => {
-        if (req.path === '/login' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth') return next();
+        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
         return authRequired(req, res, next);
     });
 
@@ -673,23 +674,106 @@ function startAdminServer(dataProvider) {
         res.json({ ok: true, data: { valid: true } });
     });
 
-    app.post('/api/qq-phone-capture/start', (req, res) => {
+    // ============ 公告 API ============
+    app.get('/api/announcement', (req, res) => {
         try {
-            const currentUser = req.currentUser || {};
-            const username = String(currentUser.username || 'admin').trim() || 'admin';
-            const accountName = String((req.body && req.body.name) || '').trim();
-            const panelPort = CONFIG.adminPort || 3000;
-            const data = phoneCapture.startCapture({
-                username,
-                accountName,
-                panelApi: `http://127.0.0.1:${panelPort}/api/code-capture`,
-                port: process.env.FARM_PHONE_PROXY_PORT || 8899,
-            });
-            return res.json({ ok: true, data });
+            res.json({ ok: true, data: null });
         } catch (e) {
-            return res.status(500).json({ ok: false, error: e.message });
+            res.status(500).json({ ok: false, error: e.message });
         }
     });
+
+    // ============ 微信扫码 API ============
+    app.post('/api/wx-qr/create', async (req, res) => {
+        try {
+            const wxConfig = userStore.getWxConfig ? userStore.getWxConfig() : {};
+            if (!wxConfig.appId) {
+                const mockUuid = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                const mockUrl = `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${mockUuid}`;
+                return res.json({ ok: true, data: { uuid: mockUuid, qrImageUrl: mockUrl, mock: true } });
+            }
+            const { appId, secret } = wxConfig;
+            const tokenRes = await fetch(`https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${secret}`);
+            const tokenData = await tokenRes.json();
+            if (!tokenData.access_token) return res.status(500).json({ ok: false, error: '获取微信token失败' });
+            const qrRes = await fetch('https://api.weixin.qq.com/cgi-bin/qrcode/create?access_token=' + tokenData.access_token, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ expire_seconds: 300, action_name: 'QR_STR_SCENE', action_info: { scene: { scene_str: `farm_${Date.now()}` } } })
+            });
+            const qrData = await qrRes.json();
+            if (!qrData.ticket) return res.status(500).json({ ok: false, error: '创建微信二维码失败' });
+            res.json({ ok: true, data: { uuid: qrData.ticket, qrImageUrl: `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${encodeURIComponent(qrData.ticket)}` } });
+        } catch (e) {
+            adminLogger.warn('wx qr create failed', { error: e.message });
+            res.status(500).json({ ok: false, error: `创建微信二维码失败: ${e.message}` });
+        }
+    });
+
+    app.post('/api/wx-qr/check', async (req, res) => {
+        try {
+            const { code } = req.body || {};
+            if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
+            if (String(code).startsWith('mock_')) {
+                const sessions = phoneCapture.getWxQRSessions ? phoneCapture.getWxQRSessions() : {};
+                const session = sessions[code];
+                if (!session) {
+                    if (phoneCapture.registerWxQRSession) phoneCapture.registerWxQRSession(code);
+                    return res.json({ ok: true, data: { status: 'wait', ok: 0, mock: true } });
+                }
+                if (session.status === 'ok' && session.code) {
+                    return res.json({ ok: true, data: { status: 'ok', code: session.code, openId: session.openId || '', mock: true } });
+                }
+                return res.json({ ok: true, data: { status: 'wait', ok: 0, mock: true } });
+            }
+            res.json({ ok: true, data: { status: 'wait', ok: 0 } });
+        } catch (e) {
+            adminLogger.warn('wx qr check failed', { error: e.message });
+            res.status(500).json({ ok: false, error: `查询微信扫码状态失败: ${e.message}` });
+        }
+    });
+
+    app.post('/api/wx-qr/reset', (req, res) => {
+        try {
+            const { code } = req.body || {};
+            if (code && phoneCapture.unregisterWxQRSession) phoneCapture.unregisterWxQRSession(code);
+            res.json({ ok: true });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // ============ 节点管理 API ============
+    app.get('/api/nodes/available', (req, res) => {
+        try {
+            const nodes = [{ nodeId: 1, name: '默认节点', type: 'free', recommended: true, online: true, remainingSlots: 999, maxAccounts: 9999, globalUsed: 0, healthScore: 100, latencyMs: 0, pendingCommands: 0 }];
+            if (store.getAllNodes) {
+                const configuredNodes = store.getAllNodes();
+                if (Array.isArray(configuredNodes) && configuredNodes.length > 0) { res.json({ ok: true, data: configuredNodes }); return; }
+            }
+            res.json({ ok: true, data: nodes });
+        } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+    });
+
+    // ============ 抓包代理 API（增强） ============
+    app.get('/api/capture-proxy/info', (req, res) => {
+        try {
+            const hasMitmdump = (() => { try { return !!require('child_process').spawnSync('mitmdump', ['--version']).stdout?.toString()?.trim(); } catch { return false; } })();
+            res.json({ ok: true, data: { enabled: !!(process.env.FARM_PHONE_PROXY_PORT || hasMitmdump), port: process.env.FARM_PHONE_PROXY_PORT || 8899 } });
+        } catch (e) { res.json({ ok: true, data: { enabled: false } }); }
+    });
+
+    app.get('/api/capture-proxy/cert', (req, res) => {
+        try {
+            const homeDir = require('os').homedir();
+            const certPath = path.join(homeDir, '.mitmproxy', 'mitmproxy-ca-cert.pem');
+            if (fs.existsSync(certPath)) return res.download(certPath, 'mitmproxy-ca.cer');
+            const altPaths = ['/usr/local/share/mitmproxy/mitmproxy-ca-cert.pem', '/etc/mitmproxy/mitmproxy-ca-cert.pem', path.join(homeDir, '.local/share/mitmproxy/mitmproxy-ca-cert.pem')];
+            for (const p of altPaths) { if (fs.existsSync(p)) return res.download(p, 'mitmproxy-ca.cer'); }
+            return res.status(404).json({ ok: false, error: '证书文件未找到，请先安装 mitmproxy' });
+        } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+    });
+
+    // ============ QQ手机抓包API（已移至下方增强版） ============
 
     app.get('/api/qq-phone-capture/status', (req, res) => {
         try {
@@ -2375,28 +2459,54 @@ function startAdminServer(dataProvider) {
     });
 
     // API: 账号管理
-    app.get('/api/accounts', (req, res) => {
-        try {
-            const currentUser = req.currentUser;
-            let data;
+        app.get('/api/accounts', (req, res) => {
+            try {
+                const currentUser = req.currentUser;
+                let data;
 
-            if (currentUser) {
-                // 所有用户（包括管理员）只能看到自己的账号
-                const allAccounts = provider.getAccounts();
-                data = {
-                    ...allAccounts,
-                    accounts: allAccounts.accounts.filter(a => a.username === currentUser.username)
-                };
-            } else {
-                // 未登录用户返回空列表
-                data = { accounts: [], nextId: 1 };
+                if (currentUser) {
+                    const allAccounts = provider.getAccounts();
+                    let accounts = allAccounts.accounts.filter(a => a.username === currentUser.username);
+
+                    // 分页支持
+                    const page = Math.max(1, Number(req.query.page) || 1);
+                    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+                    const keyword = String(req.query.keyword || '').trim().toLowerCase();
+
+                    let filtered = accounts.filter(a => !a.deletedAt);
+                    if (keyword) {
+                        filtered = filtered.filter(a =>
+                            String(a.name || '').toLowerCase().includes(keyword) ||
+                            String(a.uin || '').includes(keyword) ||
+                            String(a.id || '').includes(keyword)
+                        );
+                    }
+
+                    const total = filtered.length;
+                    const totalPages = Math.ceil(total / limit);
+                    const start = (page - 1) * limit;
+                    const paged = filtered.slice(start, start + limit);
+
+                    data = {
+                        accounts: paged,
+                        total,
+                        page,
+                        limit,
+                        totalPages,
+                        stats: {
+                            running: filtered.filter(a => a.running).length,
+                            stopped: filtered.filter(a => !a.running).length,
+                        }
+                    };
+                } else {
+                    data = { accounts: [], total: 0, page: 1, limit: 50, totalPages: 0, stats: { running: 0, stopped: 0 } };
+                }
+
+                res.json({ ok: true, data });
+            } catch (e) {
+                res.status(500).json({ ok: false, error: e.message });
             }
-
-            res.json({ ok: true, data });
-        } catch (e) {
-            res.status(500).json({ ok: false, error: e.message });
-        }
-    });
+        });
 
     // API: 更新账号备注（兼容旧接口）
     app.post('/api/account/remark', (req, res) => {
