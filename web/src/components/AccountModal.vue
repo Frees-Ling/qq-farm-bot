@@ -31,7 +31,7 @@ const pcFarmFound = ref(false)
 const knownAccountCount = ref(0)
 const pendingUin = ref('')
 const pendingNickname = ref('')
-const activeTab = ref<'wx' | 'qq' | 'wx-config' | 'manual'>('manual')
+const activeTab = ref<'wx' | 'pc' | 'wx-config' | 'manual'>('manual')
 const loading = ref(false)
 const errorMessage = ref('')
 
@@ -139,7 +139,7 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
       }).catch(() => { knownAccountCount.value = 0 })
       pcFarmWaiting.value = true
       pcFarmFound.value = false
-      activeTab.value = 'qq'
+      activeTab.value = 'pc'
       startPcFarmCheck()
     }
   }
@@ -154,16 +154,16 @@ const { pause: stopQqCaptureCheck, resume: startQqCaptureCheck } = useIntervalFn
   }
 }, 2000, { immediate: false })
 
-async function loadQqQRCode() {
-  if (activeTab.value !== 'qq')
+async function loadPcCapture() {
+  if (activeTab.value !== 'pc')
     return
-  qqLoginStore.resetState()
-  const success = await qqLoginStore.getQRCode()
-  if (success) {
-    await qqLoginStore.startPhoneCapture(qqAccountName.value.trim())
-    startQqCaptureCheck()
-    startQqCheck()
-  }
+  // 直接开始监听PC QQ补丁捕获
+  knownAccountCount.value = accountStore.accounts.length
+  await accountStore.fetchAccounts()
+  knownAccountCount.value = accountStore.accounts.length
+  pcFarmWaiting.value = true
+  pcFarmFound.value = false
+  startPcFarmCheck()
 }
 
 // 保存微信配置
@@ -337,10 +337,10 @@ watch(activeTab, (tab) => {
     qqLoginStore.resetState()
     loadWxQRCode()
   }
-  else if (tab === 'qq') {
+  else if (tab === 'pc') {
     stopWxCheck()
     wxLoginStore.resetState()
-    loadQqQRCode()
+    loadPcCapture()
   }
   else {
     stopWxCheck()
@@ -399,12 +399,12 @@ watch(activeTab, (tab) => {
           </button>
           <button
             class="flex-1 py-2 text-center text-sm font-medium transition-colors"
-            :class="activeTab === 'qq' ? 'border-b-2' : 'opacity-60'"
+            :class="activeTab === 'pc' ? 'border-b-2' : 'opacity-60'"
             :style="{
-              color: activeTab === 'qq' ? 'var(--theme-primary)' : 'var(--theme-text)',
+              color: activeTab === 'pc' ? 'var(--theme-primary)' : 'var(--theme-text)',
               borderColor: 'var(--theme-primary)',
             }"
-            @click="activeTab = 'qq'"
+            @click="activeTab = 'pc'"
           >
             QQ扫码
           </button>
@@ -465,8 +465,8 @@ watch(activeTab, (tab) => {
           </div>
         </div>
 
-        <!-- QQ 扫码 Tab -->
-        <div v-if="activeTab === 'qq'" class="space-y-4">
+        <!-- PC 监听 Tab -->
+        <div v-if="activeTab === 'pc'" class="space-y-4">
 
           <!-- PC QQ 等待模式 -->
           <div v-if="pcFarmWaiting" class="flex flex-col items-center justify-center py-6 space-y-4">
@@ -495,51 +495,26 @@ watch(activeTab, (tab) => {
             <p class="text-sm text-foreground-muted">正在启动农场挂机...</p>
           </div>
 
-          <!-- 正常的QQ扫码界面 -->
+          <!-- 空闲状态 - 开始监听 -->
           <template v-else>
-          <BaseInput
-            v-model="qqAccountName"
-            label="账号备注（可选）"
-            placeholder="留空使用 QQ 昵称或号码"
-          />
-
-          <div class="flex flex-col items-center justify-center py-6 space-y-4">
-            <div
-              v-if="qqQrImageSrc"
-              class="border rounded-lg p-2"
-              :style="{ borderColor: 'color-mix(in srgb, var(--theme-text) 20%, transparent)', background: '#fff' }"
-            >
-              <img :src="qqQrImageSrc" class="h-48 w-48">
-            </div>
-            <div
-              v-else
-              class="h-48 w-48 flex items-center justify-center rounded-lg"
-              :style="{ background: 'color-mix(in srgb, var(--theme-bg) 90%, var(--theme-text))' }"
-            >
-              <div v-if="qqLoginStore.isLoading" i-svg-spinners-90-ring-with-bg class="text-3xl" :style="{ color: 'var(--theme-primary)' }" />
-              <span v-else class="text-sm" :style="{ color: 'var(--theme-text)' }">点击获取二维码</span>
-            </div>
-
-            <p class="text-center text-sm" :style="{ color: 'var(--theme-text)' }">
-              {{ qqLoginStore.statusMessage }}
+          <div class="flex flex-col items-center justify-center py-8 space-y-4">
+            <div class="i-carbon-audio-spectrum text-5xl text-foreground-muted" />
+            <p class="text-lg font-medium text-foreground">PC QQ 监听捕获</p>
+            <p class="text-sm text-foreground-muted text-center max-w-sm">
+              QQ经典农场的 game.js 已注入补丁<br/>
+              点击「开始监听」后打开PC QQ上的农场即可自动捕获Code
             </p>
-
-            <p v-if="qqLoginStore.errorMessage" class="text-center text-sm text-red-600">
-              {{ qqLoginStore.errorMessage }}
-            </p>
-
-            <BaseButton variant="secondary" size="sm" :loading="qqLoginStore.isLoading" @click="loadQqQRCode">
-              刷新二维码
+            <div class="w-full rounded-lg border border-blue-200/60 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-700/40 dark:bg-blue-900/20 dark:text-blue-200">
+              <p class="font-medium mb-1">📋 操作步骤</p>
+              <ol class="list-decimal pl-4 space-y-0.5">
+                <li>点击「开始监听」</li>
+                <li>打开电脑QQ → QQ经典农场</li>
+                <li>自动捕获Code → 账号创建完成</li>
+              </ol>
+            </div>
+            <BaseButton variant="primary" @click="loadPcCapture">
+              🎯 开始监听
             </BaseButton>
-          </div>
-
-          <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
-            <div class="font-medium">
-              使用手机 QQ 扫码确认身份
-            </div>
-            <div class="mt-1 opacity-80">
-              扫码后请在PC QQ中打开QQ经典农场，系统会自动捕获Code
-            </div>
           </div>
           </template>
         </div>
