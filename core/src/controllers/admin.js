@@ -878,6 +878,50 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // ============ 系统日志 ============
+    const CAPTURE_LOG_FILE = getDataFile('capture-system.log');
+
+    function appendCaptureLog(message) {
+        try {
+            const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+            const line = `[${ts}] ${message}`;
+            fs.appendFileSync(CAPTURE_LOG_FILE, line + '\n', 'utf8');
+        } catch (_) {}
+    }
+
+    app.get('/api/system-logs', (req, res) => {
+        try {
+            const lines = Number(req.query.lines) || 200;
+            const keyword = String(req.query.keyword || '').trim().toLowerCase();
+            let data = [];
+            if (fs.existsSync(CAPTURE_LOG_FILE)) {
+                const content = fs.readFileSync(CAPTURE_LOG_FILE, 'utf8');
+                data = content.split('\n').filter(Boolean);
+            }
+            // 添加journal日志
+            try {
+                const execSync = require('child_process').execSync;
+                const journal = execSync('journalctl -u qq-farm-bot --no-pager -n 100 2>/dev/null | grep -E "pending-code|code-capture|claim|TRACE" || true', { timeout: 3000 }).toString();
+                if (journal.trim()) {
+                    data = [...data, '--- journal ---', ...journal.trim().split('\n')];
+                }
+            } catch (_) {}
+            if (keyword) data = data.filter(l => l.toLowerCase().includes(keyword));
+            res.json({ ok: true, data: { lines: data.slice(-lines).reverse() } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 用appendCaptureLog代替console日志
+    const origInfo = adminLogger.info;
+    adminLogger.info = function(msg, meta) {
+        origInfo.call(adminLogger, msg, meta);
+        if (msg.includes('pending-code') || msg.includes('code-capture') || msg.includes('TRACE') || msg.includes('claim')) {
+            appendCaptureLog(`${msg} ${meta ? JSON.stringify(meta) : ''}`);
+        }
+    };
+
     app.use('/api', (req, res, next) => {
         if (req.path === '/pending-code') return next(); // 公开
         if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
