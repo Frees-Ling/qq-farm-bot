@@ -197,7 +197,7 @@ onUnmounted(() => { stopPolling() })
             微信 小程序
           </label>
         </div>
-        <BaseButton variant="primary" :loading="captureStatus === 'starting'" @click="startCapture">
+        <BaseButton variant="primary" :loading="(captureStatus as string) === 'starting'" @click="startCapture">
           开始抓包
         </BaseButton>
         <p v-if="errorMsg" class="text-sm text-red-500">{{ errorMsg }}</p>
