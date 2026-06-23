@@ -13,7 +13,7 @@ const { Server: SocketIOServer } = require('socket.io');
 const { version } = require('../../package.json');
 const { CONFIG } = require('../config/config');
 const { getLevelExpProgress } = require('../config/gameConfig');
-const { getResourcePath } = require('../config/runtime-paths');
+const { getResourcePath, getDataFile } = require('../config/runtime-paths');
 const store = require('../models/store');
 const { addOrUpdateAccount, deleteAccount } = store;
 const { findAccountByRef, normalizeAccountRef, resolveAccountId } = require('../services/account-resolver');
@@ -317,68 +317,124 @@ function startAdminServer(dataProvider) {
         }
     });
 
-    // OAuth 扫码登录 - 生成二维码
-    const oauthQrSessions = new Map();
+    // ============ OAuth 扫码登录（通过u.daib.cn等聚合登录平台） ============
+    const OAUTH_QR_FILE = getDataFile('oauth-qr-sessions.json');
+
+    function loadOAuthQrSessions() {
+        try {
+            if (fs.existsSync(OAUTH_QR_FILE)) {
+                const raw = JSON.parse(fs.readFileSync(OAUTH_QR_FILE, 'utf8'));
+                return new Map(Object.entries(raw));
+            }
+        } catch (e) {
+            adminLogger.warn('load oauth qr sessions failed', { error: e.message });
+        }
+        return new Map();
+    }
+
+    function saveOAuthQrSessions(sessions) {
+        try {
+            const obj = Object.fromEntries(sessions);
+            fs.writeFileSync(OAUTH_QR_FILE, JSON.stringify(obj), 'utf8');
+        } catch (e) {
+            adminLogger.warn('save oauth qr sessions failed', { error: e.message });
+        }
+    }
+
+    let oauthQrSessions = loadOAuthQrSessions();
+
+    // 生成OAuth二维码
     app.post('/api/oauth/qr-create', async (req, res) => {
         try {
             const { type } = req.body || {};
             const loginType = type || 'qq';
 
-            const oauthConfig = store.getOAuthConfig();
-            if (!oauthConfig.enabled || !oauthConfig.apiUrl || !oauthConfig.appId || !oauthConfig.appKey) {
-                // 无配置时，使用固定u.daib.cn配置
-                const QRCode = require('qrcode');
-                const sessionId = `oauth_qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-                const qrUrl = `https://u.daib.cn/connect.php?act=login&appid=2637&appkey=2d0b86a212509b1708ccd64ecfcd8452&type=${loginType}&redirect_uri=${encodeURIComponent(`http://38.246.244.203:3000/api/oauth/callback?qrSession=${sessionId}`)}`;
-
-                oauthQrSessions.set(sessionId, { status: 'waiting', socialUid: '', nickname: '', createdAt: Date.now() });
-
-                const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 300, margin: 1 });
-                return res.json({ ok: true, data: { uuid: sessionId, qrImageUrl: qrDataUrl, platform: loginType } });
-            }
-
-            // 使用配置的OAuth
-            const apiUrl = oauthConfig.apiUrl;
-            const appId = oauthConfig.appId;
-            const appKey = oauthConfig.appKey;
+            const QRCode = require('qrcode');
+            const sessionId = `oauth_qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             const protocol = req.protocol;
             const host = req.get('host');
+            const oauthConfig = store.getOAuthConfig();
+
+            // 确定回调地址：优先用配置的，其次用请求host
             const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || '').trim().replace(/\/+$/, '');
-            const sessionId = `oauth_qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback?qrSession=${sessionId}`;
+            const publicUrl = callbackBaseUrl || `${protocol}://${host}`;
+            const callbackUrl = `${publicUrl}/api/oauth/callback?qrSession=${sessionId}&type=${loginType}`;
 
-            const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
-            const result = await oauth.login(loginType);
-
-            if (result.code !== 0 || !result.url) {
-                return res.status(500).json({ ok: false, error: result.msg || '获取登录链接失败' });
+            let oauthUrl;
+            if (oauthConfig.enabled && oauthConfig.apiUrl && oauthConfig.appId && oauthConfig.appKey) {
+                // 使用配置的OAuth服务
+                const oauth = new OauthService(oauthConfig.apiUrl, oauthConfig.appId, oauthConfig.appKey, callbackUrl);
+                const result = await oauth.login(loginType);
+                if (result.code !== 0 || !result.url) {
+                    return res.status(500).json({ ok: false, error: result.msg || '获取登录链接失败' });
+                }
+                oauthUrl = result.url;
+            } else {
+                // 默认使用 u.daib.cn 配置
+                oauthUrl = `https://u.daib.cn/connect.php?act=login&appid=2637&appkey=2d0b86a212509b1708ccd64ecfcd8452&type=${loginType}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
             }
 
-            oauthQrSessions.set(sessionId, { status: 'waiting', socialUid: '', nickname: '', createdAt: Date.now() });
+            // 保存session到文件
+            oauthQrSessions.set(sessionId, {
+                status: 'waiting',
+                socialUid: '',
+                nickname: '',
+                platform: loginType,
+                callbackUrl: callbackUrl,
+                createdAt: Date.now()
+            });
+            saveOAuthQrSessions(oauthQrSessions);
 
-            const QRCode = require('qrcode');
-            const qrDataUrl = await QRCode.toDataURL(result.url, { width: 300, margin: 1 });
-            res.json({ ok: true, data: { uuid: sessionId, qrImageUrl: qrDataUrl, platform: loginType } });
+            // 生成二维码
+            const qrDataUrl = await QRCode.toDataURL(oauthUrl, { width: 300, margin: 1, errorCorrectionLevel: 'M' });
+
+            res.json({
+                ok: true,
+                data: {
+                    uuid: sessionId,
+                    qrImageUrl: qrDataUrl,
+                    platform: loginType,
+                    expiresIn: 300,
+                    callbackHost: publicUrl,
+                }
+            });
         } catch (e) {
             adminLogger.warn('oauth qr create failed', { error: e.message });
             res.status(500).json({ ok: false, error: `生成二维码失败: ${e.message}` });
         }
     });
 
-    // OAuth 扫码状态轮询
+    // 轮询OAuth扫码状态
     app.post('/api/oauth/qr-status', (req, res) => {
         try {
             const { code } = req.body || {};
             if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
 
+            oauthQrSessions = loadOAuthQrSessions();
             const session = oauthQrSessions.get(code);
+
             if (!session) {
                 return res.json({ ok: true, data: { status: 'wait', ok: 0 } });
             }
 
             if (session.status === 'ok' && session.socialUid) {
-                return res.json({ ok: true, data: { status: 'ok', socialUid: session.socialUid, nickname: session.nickname, ok: 1 } });
+                // 扫码成功，返回身份信息
+                return res.json({
+                    ok: true,
+                    data: {
+                        status: 'ok',
+                        socialUid: session.socialUid,
+                        nickname: session.nickname,
+                        ok: 1
+                    }
+                });
+            }
+
+            if (session.status === 'error') {
+                return res.json({
+                    ok: true,
+                    data: { status: 'error', error: session.error || '授权失败', ok: 0 }
+                });
             }
 
             res.json({ ok: true, data: { status: 'wait', ok: 0 } });
@@ -403,7 +459,6 @@ function startAdminServer(dataProvider) {
             appId = oauthConfig.appId;
             appKey = oauthConfig.appKey;
         } else {
-            // 默认使用 u.daib.cn 配置
             apiUrl = 'https://u.daib.cn/';
             appId = '2637';
             appKey = '2d0b86a212509b1708ccd64ecfcd8452';
@@ -420,15 +475,20 @@ function startAdminServer(dataProvider) {
         if (result.code === 0 && result.social_uid) {
             const { social_uid, nickname, faceimg } = result;
 
-            // 如果是扫码session模式，更新session而不是创建用户
-            if (qrSession && oauthQrSessions.has(qrSession)) {
-                const session = oauthQrSessions.get(qrSession);
-                session.status = 'ok';
-                session.socialUid = social_uid;
-                session.nickname = nickname || 'QQ用户';
-                session.faceimg = faceimg || '';
-                adminLogger.info('oauth qr scan success', { type, social_uid, nickname });
-                return res.redirect(`/oauth-success?social_uid=${social_uid}&nickname=${encodeURIComponent(nickname || 'QQ用户')}`);
+            // 如果是扫码session模式
+            if (qrSession) {
+                oauthQrSessions = loadOAuthQrSessions();
+                if (oauthQrSessions.has(qrSession)) {
+                    const session = oauthQrSessions.get(qrSession);
+                    session.status = 'ok';
+                    session.socialUid = social_uid;
+                    session.nickname = nickname || (type === 'qq' ? 'QQ用户' : '微信用户');
+                    session.faceimg = faceimg || '';
+                    oauthQrSessions.set(qrSession, session);
+                    saveOAuthQrSessions(oauthQrSessions);
+                    adminLogger.info('oauth qr scan success', { type, social_uid, nickname });
+                    return res.redirect(`/oauth-success?social_uid=${social_uid}&nickname=${encodeURIComponent(nickname || '')}`);
+                }
             }
 
             const { user, isNew } = userStore.findOrCreateOAuthUser(type, social_uid, nickname, faceimg);
