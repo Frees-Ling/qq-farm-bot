@@ -7,8 +7,8 @@ import time
 import urllib.parse
 import urllib.request
 
-DEFAULT_USERNAME = os.environ.get("FARM_CAPTURE_USERNAME", "admin")
-PANEL_API = os.environ.get("FARM_PANEL_API", "http://127.0.0.1:3000/api/code-capture")
+DEFAULT_USERNAME = os.environ.get("FARM_CAPTURE_USERNAME", "")
+PANEL_API = os.environ.get("FARM_PANEL_API", "http://127.0.0.1:3000/api/pending-code")
 LISTEN_HOST = os.environ.get("FARM_CAPTURE_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("FARM_CAPTURE_PORT", "9988"))
 LOG_PATH = os.environ.get("FARM_CAPTURE_LOG", "")
@@ -94,6 +94,7 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
             _seen[dedupe_key] = now
 
         api = (
+        write_log(f"forward url={api[:200]}")
             f"{PANEL_API}?code={urllib.parse.quote(code)}"
             f"&username={urllib.parse.quote(username)}"
         )

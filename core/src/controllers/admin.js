@@ -643,6 +643,16 @@ function startAdminServer(dataProvider) {
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const code = String(req.query.code || body.code || '').trim();
+            const username = String(body.username || req.query.username || '').trim();
+            const uin = String(body.uin || req.query.uin || '').trim();
+            adminLogger.info('[TRACE] code-capture被调用', {
+                code: code.substring(0, 20),
+                username: username || '(空)',
+                uin: uin || '(空)',
+                queryKeys: Object.keys(req.query || {}).join(','),
+                bodyKeys: Object.keys(body || {}).join(','),
+                fromIP: req.ip,
+            });
             if (!code) {
                 return res.status(400).json({ ok: false, error: 'Missing code' });
             }
