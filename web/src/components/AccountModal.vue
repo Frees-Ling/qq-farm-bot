@@ -9,6 +9,7 @@ import { unwrapOk } from '@/api/result'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
+import { useAccountStore } from '@/stores/account'
 import { useQqLoginStore } from '@/stores/qq-login'
 import { useWxLoginStore } from '@/stores/wx-login'
 
@@ -22,8 +23,14 @@ const emit = defineEmits(['close', 'saved'])
 const router = useRouter()
 const wxLoginStore = useWxLoginStore()
 const qqLoginStore = useQqLoginStore()
+const accountStore = useAccountStore()
 
 // 标签页：manual-手动填码, wx-微信扫码, qq-QQ扫码, wx-config-微信配置
+const pcFarmWaiting = ref(false)
+const pcFarmFound = ref(false)
+const knownAccountCount = ref(0)
+const pendingUin = ref('')
+const pendingNickname = ref('')
 const activeTab = ref<'wx' | 'qq' | 'wx-config' | 'manual'>('manual')
 const loading = ref(false)
 const errorMessage = ref('')
@@ -121,12 +128,19 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
       stopQqCheck()
       stopQqCaptureCheck()
       qqLoginStore.stopPhoneCapture()
-      const qqName = qqAccountName.value.trim() || ('QQ' + codeResult.uin)
-      form.name = qqName
-      form.platform = 'qq'
-      // 跳到手动填码，但显示更详细的指引
-      activeTab.value = 'manual'
-      errorMessage.value = '✅ QQ验证成功(' + codeResult.uin + ')! Code需要通过抓包获取。点击下方「查看抓包教程」了解如何用手机代理捕获Code'
+      qqLoginStore.resetState()
+      // 切换到PC QQ等待模式
+      pendingUin.value = codeResult.uin
+      pendingNickname.value = codeResult.nickname || `QQ${codeResult.uin}`
+      knownAccountCount.value = 0
+      // 获取当前账号数作为基准
+      accountStore.fetchAccounts().then(() => {
+        knownAccountCount.value = accountStore.accounts.length
+      }).catch(() => { knownAccountCount.value = 0 })
+      pcFarmWaiting.value = true
+      pcFarmFound.value = false
+      activeTab.value = 'qq'
+      startPcFarmCheck()
     }
   }
 }, 2000, { immediate: false })
@@ -248,13 +262,42 @@ const qqQrImageSrc = computed(() => {
   return `data:image/png;base64,${qqLoginStore.qrCode}`
 })
 
+// PC QQ等待模式 - 轮询检测账号是否被自动创建
+const { pause: stopPcFarmCheck, resume: startPcFarmCheck } = useIntervalFn(async () => {
+  if (!pcFarmWaiting.value) return
+  try {
+    await accountStore.fetchAccounts()
+    const currentCount = accountStore.accounts.length
+    if (currentCount > knownAccountCount.value) {
+      // 发现新账号！game.js补丁捕获到了Code
+      pcFarmFound.value = true
+      pcFarmWaiting.value = false
+      stopPcFarmCheck()
+      // 自动启动新账号
+      const newAccount = accountStore.accounts[0]
+      if (newAccount && newAccount.id) {
+        try {
+          await accountStore.startAccount(newAccount.id)
+        } catch {}
+      }
+      setTimeout(() => {
+        emit('saved')
+        close()
+      }, 1500)
+    }
+  } catch {}
+}, 3000, { immediate: false })
+
 function close() {
   stopWxCheck()
   stopQqCheck()
   stopQqCaptureCheck()
+  stopPcFarmCheck()
   qqLoginStore.stopPhoneCapture()
   wxLoginStore.resetState()
   qqLoginStore.resetState()
+  pcFarmWaiting.value = false
+  pcFarmFound.value = false
   emit('close')
 }
 
@@ -424,6 +467,36 @@ watch(activeTab, (tab) => {
 
         <!-- QQ 扫码 Tab -->
         <div v-if="activeTab === 'qq'" class="space-y-4">
+
+          <!-- PC QQ 等待模式 -->
+          <div v-if="pcFarmWaiting" class="flex flex-col items-center justify-center py-6 space-y-4">
+            <div class="i-svg-spinners-90-ring-with-bg text-4xl" :style="{ color: 'var(--theme-primary)' }" />
+            <div class="text-center">
+              <p class="text-base font-medium text-green-600">✅ QQ验证成功 ({{ pendingUin }})</p>
+              <p class="mt-2 text-sm text-foreground-muted">请在PC QQ中打开QQ经典农场</p>
+            </div>
+            <div class="w-full rounded-lg border border-blue-200/60 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-700/40 dark:bg-blue-900/20 dark:text-blue-200">
+              <p class="font-medium mb-2">📋 操作步骤</p>
+              <ol class="list-decimal pl-4 text-xs space-y-1">
+                <li>打开电脑上的QQ</li>
+                <li>找到并打开「QQ经典农场」小程序</li>
+                <li>补丁自动捕获Code → 账号自动创建</li>
+                <li>等待页面自动刷新...</li>
+              </ol>
+            </div>
+            <p class="text-sm text-foreground-muted">正在等待PC QQ捕获Code...</p>
+            <BaseButton variant="outline" size="sm" @click="close">取消</BaseButton>
+          </div>
+
+          <!-- PC QQ 捕获成功 -->
+          <div v-else-if="pcFarmFound" class="flex flex-col items-center justify-center py-6 space-y-4">
+            <div class="i-carbon-checkmark-filled text-5xl text-green-500" />
+            <p class="text-base font-medium text-green-600">🎉 Code捕获成功！账号已创建</p>
+            <p class="text-sm text-foreground-muted">正在启动农场挂机...</p>
+          </div>
+
+          <!-- 正常的QQ扫码界面 -->
+          <template v-else>
           <BaseInput
             v-model="qqAccountName"
             label="账号备注（可选）"
@@ -462,12 +535,13 @@ watch(activeTab, (tab) => {
 
           <div class="rounded-lg p-3 text-xs leading-6" :style="{ background: 'color-mix(in srgb, var(--theme-primary) 10%, transparent)', color: 'var(--theme-text)' }">
             <div class="font-medium">
-              使用手机 QQ 扫码确认登录。
+              使用手机 QQ 扫码确认身份
             </div>
             <div class="mt-1 opacity-80">
-              确认后请立刻在手机 QQ 打开 QQ经典农场一次，页面会自动等待并创建账号。
+              扫码后请在PC QQ中打开QQ经典农场，系统会自动捕获Code
             </div>
           </div>
+          </template>
         </div>
 
         <!-- 微信配置 Tab -->
