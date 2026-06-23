@@ -812,7 +812,48 @@ function startAdminServer(dataProvider) {
     app.get('/api/code-capture', codeCaptureHandler);
     app.post('/api/code-capture', codeCaptureHandler);
 
+    // ============ 待认领Code（多用户抓包） ============
+    const pendingCodes = [];
+
+    // sniff9988发来的待认领Code（公开接口）
+    app.post('/api/pending-code', (req, res) => {
+        try {
+            const { code } = req.body || {};
+            if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
+            pendingCodes.push({ code, capturedAt: Date.now(), claimed: false });
+            adminLogger.info('pending code received', { code: code.substring(0, 20) });
+            res.json({ ok: true });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 当前用户认领一个待处理Code（需登录）
+    app.post('/api/pending-code/claim', (req, res) => {
+        try {
+            const currentUser = req.currentUser;
+            if (!currentUser) return res.status(401).json({ ok: false, error: '未登录' });
+
+            // 找最旧的未认领Code
+            const idx = pendingCodes.findIndex(c => !c.claimed);
+            if (idx === -1) return res.json({ ok: true, data: null });
+
+            const item = pendingCodes[idx];
+            item.claimed = true;
+            item.claimedBy = currentUser.username;
+            item.claimedAt = Date.now();
+
+            // 清理过期（保留最近50个）
+            while (pendingCodes.length > 50) pendingCodes.shift();
+
+            res.json({ ok: true, data: { code: item.code } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     app.use('/api', (req, res, next) => {
+        if (req.path === '/pending-code') return next(); // 公开
         if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
         return authRequired(req, res, next);
     });

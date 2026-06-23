@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root/qq-farm-bot
-Environment=FARM_PANEL_API=http://127.0.0.1:3000/api/code-capture
-Environment=FARM_CAPTURE_USERNAME=admin
+Environment=FARM_PANEL_API=http://127.0.0.1:3000/api/pending-code
+Environment=FARM_CAPTURE_USERNAME=
 ExecStart=/usr/bin/python3 tools/sniff9988.py
 Restart=always
 RestartSec=3

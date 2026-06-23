@@ -266,24 +266,28 @@ const qqQrImageSrc = computed(() => {
 const { pause: stopPcFarmCheck, resume: startPcFarmCheck } = useIntervalFn(async () => {
   if (!pcFarmWaiting.value) return
   try {
-    await accountStore.fetchAccounts()
-    const currentCount = accountStore.accounts.length
-    if (currentCount > knownAccountCount.value) {
-      // 发现新账号！game.js补丁捕获到了Code
-      pcFarmFound.value = true
-      pcFarmWaiting.value = false
-      stopPcFarmCheck()
-      // 自动启动新账号
-      const newAccount = accountStore.accounts[0]
-      if (newAccount && newAccount.id) {
-        try {
-          await accountStore.startAccount(newAccount.id)
-        } catch {}
+    // 轮询待认领的Code
+    const res = await api.post('/api/pending-code/claim')
+    if (res.data?.ok && res.data?.data?.code) {
+      // 认领到Code！创建账号
+      const code = res.data.data.code
+      const name = qqAccountName.value.trim() || `QQ账号${Date.now()}`
+      const result = await api.post('/api/accounts', {
+        name,
+        code,
+        platform: 'qq',
+        loginType: 'code_capture',
+        autoStart: true,
+      })
+      if (result.data?.ok) {
+        pcFarmFound.value = true
+        pcFarmWaiting.value = false
+        stopPcFarmCheck()
+        setTimeout(() => {
+          emit('saved')
+          close()
+        }, 1500)
       }
-      setTimeout(() => {
-        emit('saved')
-        close()
-      }, 1500)
     }
   } catch {}
 }, 3000, { immediate: false })
