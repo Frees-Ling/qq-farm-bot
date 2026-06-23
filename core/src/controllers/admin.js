@@ -289,7 +289,7 @@ function startAdminServer(dataProvider) {
         }
 
         const oauthConfig = store.getOAuthConfig();
-        
+
         if (!oauthConfig.enabled) {
             return res.status(400).json({ ok: false, error: 'OAuth登录未启用' });
         }
@@ -297,7 +297,7 @@ function startAdminServer(dataProvider) {
         const apiUrl = oauthConfig.apiUrl;
         const appId = oauthConfig.appId;
         const appKey = oauthConfig.appKey;
-        
+
         if (!apiUrl || !appId || !appKey) {
             return res.status(500).json({ ok: false, error: 'OAuth配置不完整，请联系管理员' });
         }
@@ -317,45 +317,131 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // OAuth 扫码登录 - 生成二维码
+    const oauthQrSessions = new Map();
+    app.post('/api/oauth/qr-create', async (req, res) => {
+        try {
+            const { type } = req.body || {};
+            const loginType = type || 'qq';
+
+            const oauthConfig = store.getOAuthConfig();
+            if (!oauthConfig.enabled || !oauthConfig.apiUrl || !oauthConfig.appId || !oauthConfig.appKey) {
+                // 无配置时，使用固定u.daib.cn配置
+                const QRCode = require('qrcode');
+                const sessionId = `oauth_qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+                const qrUrl = `https://u.daib.cn/connect.php?act=login&appid=2637&appkey=2d0b86a212509b1708ccd64ecfcd8452&type=${loginType}&redirect_uri=${encodeURIComponent(`http://38.246.244.203:3000/api/oauth/callback?qrSession=${sessionId}`)}`;
+
+                oauthQrSessions.set(sessionId, { status: 'waiting', socialUid: '', nickname: '', createdAt: Date.now() });
+
+                const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 300, margin: 1 });
+                return res.json({ ok: true, data: { uuid: sessionId, qrImageUrl: qrDataUrl, platform: loginType } });
+            }
+
+            // 使用配置的OAuth
+            const apiUrl = oauthConfig.apiUrl;
+            const appId = oauthConfig.appId;
+            const appKey = oauthConfig.appKey;
+            const protocol = req.protocol;
+            const host = req.get('host');
+            const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || '').trim().replace(/\/+$/, '');
+            const sessionId = `oauth_qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback?qrSession=${sessionId}`;
+
+            const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
+            const result = await oauth.login(loginType);
+
+            if (result.code !== 0 || !result.url) {
+                return res.status(500).json({ ok: false, error: result.msg || '获取登录链接失败' });
+            }
+
+            oauthQrSessions.set(sessionId, { status: 'waiting', socialUid: '', nickname: '', createdAt: Date.now() });
+
+            const QRCode = require('qrcode');
+            const qrDataUrl = await QRCode.toDataURL(result.url, { width: 300, margin: 1 });
+            res.json({ ok: true, data: { uuid: sessionId, qrImageUrl: qrDataUrl, platform: loginType } });
+        } catch (e) {
+            adminLogger.warn('oauth qr create failed', { error: e.message });
+            res.status(500).json({ ok: false, error: `生成二维码失败: ${e.message}` });
+        }
+    });
+
+    // OAuth 扫码状态轮询
+    app.post('/api/oauth/qr-status', (req, res) => {
+        try {
+            const { code } = req.body || {};
+            if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
+
+            const session = oauthQrSessions.get(code);
+            if (!session) {
+                return res.json({ ok: true, data: { status: 'wait', ok: 0 } });
+            }
+
+            if (session.status === 'ok' && session.socialUid) {
+                return res.json({ ok: true, data: { status: 'ok', socialUid: session.socialUid, nickname: session.nickname, ok: 1 } });
+            }
+
+            res.json({ ok: true, data: { status: 'wait', ok: 0 } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     // OAuth 回调接口
     app.get('/api/oauth/callback', async (req, res) => {
-        const { code, type } = req.query;
+        const { code, type, qrSession } = req.query;
 
         if (!code || !type) {
             return res.redirect('/login?error=invalid_callback');
         }
 
+        // 尝试使用配置的OAuth，如果没有配置则使用硬编码的u.daib.cn
+        let apiUrl, appId, appKey;
         const oauthConfig = store.getOAuthConfig();
-        const apiUrl = oauthConfig.apiUrl;
-        const appId = oauthConfig.appId;
-        const appKey = oauthConfig.appKey;
-        
-        if (!apiUrl || !appId || !appKey) {
-            return res.redirect('/login?error=oauth_config_error');
+        if (oauthConfig.enabled && oauthConfig.apiUrl && oauthConfig.appId && oauthConfig.appKey) {
+            apiUrl = oauthConfig.apiUrl;
+            appId = oauthConfig.appId;
+            appKey = oauthConfig.appKey;
+        } else {
+            // 默认使用 u.daib.cn 配置
+            apiUrl = 'https://u.daib.cn/';
+            appId = '2637';
+            appKey = '2d0b86a212509b1708ccd64ecfcd8452';
         }
 
         const protocol = req.protocol;
         const host = req.get('host');
-        const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || '').trim().replace(/\/+$/, '');
-        const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback`;
+        const callbackBaseUrl = String(oauthConfig.callbackBaseUrl || (qrSession ? `${protocol}://${host}` : '')).trim().replace(/\/+$/, '');
+        const callbackUrl = `${callbackBaseUrl || `${protocol}://${host}`}/api/oauth/callback${qrSession ? `?qrSession=${qrSession}` : ''}`;
 
         const oauth = new OauthService(apiUrl, appId, appKey, callbackUrl);
         const result = await oauth.callback(code, type);
 
         if (result.code === 0 && result.social_uid) {
             const { social_uid, nickname, faceimg } = result;
-            
+
+            // 如果是扫码session模式，更新session而不是创建用户
+            if (qrSession && oauthQrSessions.has(qrSession)) {
+                const session = oauthQrSessions.get(qrSession);
+                session.status = 'ok';
+                session.socialUid = social_uid;
+                session.nickname = nickname || 'QQ用户';
+                session.faceimg = faceimg || '';
+                adminLogger.info('oauth qr scan success', { type, social_uid, nickname });
+                return res.redirect(`/oauth-success?social_uid=${social_uid}&nickname=${encodeURIComponent(nickname || 'QQ用户')}`);
+            }
+
             const { user, isNew } = userStore.findOrCreateOAuthUser(type, social_uid, nickname, faceimg);
-            
+
             const token = issueToken();
             tokens.add(token);
             tokenUserMap.set(token, user);
-            
-            adminLogger.info('oauth login success', { 
-                type, 
-                social_uid, 
-                username: user.username, 
-                isNew 
+
+            adminLogger.info('oauth login success', {
+                type,
+                social_uid,
+                username: user.username,
+                isNew
             });
 
             const redirectUrl = `/login?oauth_token=${token}&oauth_user=${encodeURIComponent(JSON.stringify({
@@ -660,7 +746,7 @@ function startAdminServer(dataProvider) {
     app.post('/api/code-capture', codeCaptureHandler);
 
     app.use('/api', (req, res, next) => {
-        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
+        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
         return authRequired(req, res, next);
     });
 
