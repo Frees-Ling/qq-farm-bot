@@ -211,7 +211,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     errorMessage.value = ''
   }
 
-  async function getFarmCode(ticket: string, options: { quietFailure?: boolean } = {}): Promise<{ success: boolean, code?: string, uin?: string, authOnly?: boolean }> {
+  async function getFarmCode(ticket: string, options: { quietFailure?: boolean, uin?: string } = {}): Promise<{ success: boolean, code?: string, uin?: string, authOnly?: boolean }> {
     if (!ticket)
       return { success: false }
 
@@ -220,7 +220,7 @@ export const useQqLoginStore = defineStore('qq-login', () => {
     errorMessage.value = ''
 
     try {
-      const res = await api.post('/api/qr/auth-code', { ticket, appid: '1112386029' }, { silent: true })
+      const res = await api.post('/api/qr/auth-code', { ticket, appid: '1112386029', uin: options.uin || '' }, { silent: true })
       const data = unwrapOk<any>(res.data as ApiResult<any>, '换取 QQ 农场 code 失败')
       setDiagnostic('auth-code', {
         returnedCode: data.code ? 'present' : '',

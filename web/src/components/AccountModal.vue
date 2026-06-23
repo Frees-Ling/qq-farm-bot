@@ -101,7 +101,7 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
   const result = await qqLoginStore.checkLogin()
   if (result.success && result.ticket) {
     stopQqCheck()
-    const codeResult = await qqLoginStore.getFarmCode(result.ticket, { quietFailure: true })
+    const codeResult = await qqLoginStore.getFarmCode(result.ticket, { quietFailure: true, uin: result.uin })
     if (codeResult.success && codeResult.code) {
       const name = qqAccountName.value.trim() || result.nickname || (result.uin ? `QQ${result.uin}` : `QQ账号${Date.now()}`)
       await addAccount({
