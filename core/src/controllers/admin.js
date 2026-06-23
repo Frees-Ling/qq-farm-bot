@@ -842,37 +842,38 @@ function startAdminServer(dataProvider) {
     app.get('/api/pending-code', pendingCodeHandler);
     app.post('/api/pending-code', pendingCodeHandler);
 
-    // 当前用户认领一个待处理Code（需登录）
-    app.post('/api/pending-code/claim', (req, res) => {
-        try {
-            const currentUser = req.currentUser;
-            if (!currentUser) {
-                adminLogger.warn('pending-code claim: 未登录');
-                return res.status(401).json({ ok: false, error: '未登录' });
+    // 当前用户认领一个待处理Code（需登录）- 注册在auth中间件之后
+    // 实际注册在app.use('/api')之后
+    function registerClaimRoute() {
+        app.post('/api/pending-code/claim', (req, res) => {
+            try {
+                const currentUser = req.currentUser;
+                if (!currentUser) {
+                    adminLogger.warn('pending-code claim: 未登录');
+                    return res.status(401).json({ ok: false, error: '未登录' });
+                }
+
+                adminLogger.info('pending-code claim: 用户查找待认领Code', { username: currentUser.username });
+                const idx = pendingCodes.findIndex(c => !c.claimed);
+                if (idx === -1) {
+                    adminLogger.info('pending-code claim: 无待认领Code');
+                    return res.json({ ok: true, data: null });
+                }
+
+                const item = pendingCodes[idx];
+                item.claimed = true;
+                item.claimedBy = currentUser.username;
+                item.claimedAt = Date.now();
+                adminLogger.info('pending-code claim: 认领成功', { username: currentUser.username, code: item.code.substring(0, 20) });
+
+                while (pendingCodes.length > 50) pendingCodes.shift();
+                res.json({ ok: true, data: { code: item.code } });
+            } catch (e) {
+                adminLogger.error('pending-code claim 异常', { error: e.message });
+                res.status(500).json({ ok: false, error: e.message });
             }
-
-            adminLogger.info('pending-code claim: 用户查找待认领Code', { username: currentUser.username });
-            const idx = pendingCodes.findIndex(c => !c.claimed);
-            if (idx === -1) {
-                adminLogger.info('pending-code claim: 无待认领Code');
-                return res.json({ ok: true, data: null });
-            }
-
-            const item = pendingCodes[idx];
-            item.claimed = true;
-            item.claimedBy = currentUser.username;
-            item.claimedAt = Date.now();
-            adminLogger.info('pending-code claim: 认领成功', { username: currentUser.username, code: item.code.substring(0, 20) });
-
-            // 清理过期
-            while (pendingCodes.length > 50) pendingCodes.shift();
-
-            res.json({ ok: true, data: { code: item.code } });
-        } catch (e) {
-            adminLogger.error('pending-code claim 异常', { error: e.message });
-            res.status(500).json({ ok: false, error: e.message });
-        }
-    });
+        });
+    }
 
     // ============ 系统日志 ============
     const CAPTURE_LOG_FILE = getDataFile('capture-system.log');
@@ -923,6 +924,9 @@ function startAdminServer(dataProvider) {
         if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
         return authRequired(req, res, next);
     });
+
+    // claim路由必须在auth中间件之后注册，才能正确获取req.currentUser
+    registerClaimRoute();
 
     // 管理员密码修改已移除，统一使用 /api/user/change-password 接口
 
