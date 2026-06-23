@@ -18,11 +18,21 @@ echo "== phone proxy capture =="
 if command -v mitmdump >/dev/null 2>&1; then
   echo "mitmdump command: $(command -v mitmdump)"
   mitmdump --version 2>/dev/null | sed -n '1,3p' || true
+elif [ -x /root/.local/bin/mitmdump ]; then
+  echo "mitmdump command: /root/.local/bin/mitmdump"
+  /root/.local/bin/mitmdump --version 2>/dev/null | sed -n '1,3p' || true
 else
   echo "mitmdump command: not found"
   echo "Install: python3 -m pip install --user mitmproxy"
 fi
 pgrep -af 'mitmdump|mitmproxy|mitm-qq-farm-code-capture' 2>/dev/null || true
+echo "-- expected phone proxy milestones --"
+echo "1. phone proxy capture loaded"
+echo "2. phone proxy client connected"
+echo "3. phone proxy CONNECT target host=gate-obt.nqf.qq.com"
+echo "4. phone proxy decrypted host=gate-obt.nqf.qq.com path=/prod/ws"
+echo "5. forwarded username=<username> ... response={\"ok\":true,...}"
+echo "-- recent phone proxy logs --"
 tail -n 80 logs/phone-code-capture.log 2>/dev/null || true
 
 echo

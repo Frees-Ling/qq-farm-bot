@@ -8,9 +8,18 @@ const { createModuleLogger } = require('./logger');
 const logger = createModuleLogger('phone-capture');
 const rootDir = path.join(__dirname, '../../..');
 const addonPath = path.join(rootDir, 'tools/mitm-qq-farm-code-capture.py');
+const logDir = path.join(rootDir, 'logs');
 
 const sessions = new Map();
 let activeSessionId = '';
+
+function ensureLogDir() {
+    try {
+        fs.mkdirSync(logDir, { recursive: true });
+    } catch {
+        // ignore log directory creation failures; process stderr still carries details
+    }
+}
 
 function findMitmdump() {
     const explicit = String(process.env.MITMDUMP_BIN || '').trim();
@@ -52,7 +61,29 @@ function publicSession(session) {
         updatedAt: session.updatedAt,
         accountId: session.accountId || '',
         result: session.result || null,
+        mitmdump: session.mitmdump || '',
+        pid: session.proc && session.proc.pid ? session.proc.pid : 0,
+        logPath: session.logPath || '',
+        events: Array.isArray(session.events) ? session.events.slice(-20) : [],
+        stdoutTail: String(session.stdout || '').slice(-2000),
+        stderrTail: String(session.stderr || '').slice(-2000),
     };
+}
+
+function addEvent(session, message, extra = {}) {
+    if (!session) return;
+    const event = {
+        time: Date.now(),
+        message,
+        ...extra,
+    };
+    session.events = [...(session.events || []), event].slice(-50);
+    session.updatedAt = Date.now();
+    logger.info(message, {
+        sessionId: session.sessionId,
+        username: session.username,
+        ...extra,
+    });
 }
 
 function stopSession(session, reason = 'stopped') {
@@ -73,6 +104,8 @@ function startCapture(options = {}) {
     const port = Number.parseInt(String(options.port || process.env.FARM_PHONE_PROXY_PORT || '8899'), 10) || 8899;
     const listenHost = String(options.listenHost || process.env.FARM_PHONE_PROXY_LISTEN_HOST || '0.0.0.0');
     const mitmdump = findMitmdump();
+    const logPath = String(process.env.FARM_CAPTURE_LOG || path.join(logDir, 'phone-code-capture.log'));
+    ensureLogDir();
 
     if (activeSessionId) {
         const active = sessions.get(activeSessionId);
@@ -95,6 +128,9 @@ function startCapture(options = {}) {
         proc: null,
         stdout: '',
         stderr: '',
+        events: [],
+        mitmdump,
+        logPath,
     };
     sessions.set(sessionId, session);
     activeSessionId = sessionId;
@@ -106,6 +142,15 @@ function startCapture(options = {}) {
         FARM_CAPTURE_SESSION_ID: sessionId,
         FARM_PANEL_API: panelApi,
         FARM_CAPTURE_ONESHOT: '1',
+        FARM_CAPTURE_LOG: logPath,
+        PATH: [
+            String(process.env.PATH || ''),
+            path.join(os.homedir(), '.local/bin'),
+            '/root/.local/bin',
+            '/usr/local/bin',
+            '/usr/bin',
+            '/bin',
+        ].filter(Boolean).join(path.delimiter),
     };
 
     const args = [
@@ -117,6 +162,14 @@ function startCapture(options = {}) {
     ];
 
     try {
+        addEvent(session, 'starting phone proxy capture', {
+            mitmdump,
+            port,
+            listenHost,
+            panelApi,
+            addonPath,
+            logPath,
+        });
         const proc = spawn(mitmdump, args, {
             cwd: rootDir,
             env,
@@ -126,6 +179,9 @@ function startCapture(options = {}) {
         session.status = 'running';
         session.message = '监听已启动';
         session.updatedAt = Date.now();
+        addEvent(session, 'phone proxy capture process started', {
+            pid: proc.pid || 0,
+        });
 
         proc.stdout.on('data', (chunk) => {
             session.stdout = `${session.stdout}${chunk}`.slice(-4000);
@@ -139,6 +195,10 @@ function startCapture(options = {}) {
                 ? '服务器找不到 mitmdump，请安装 mitmproxy 或设置 MITMDUMP_BIN'
                 : error.message;
             session.updatedAt = Date.now();
+            addEvent(session, 'phone proxy capture spawn failed', {
+                error: error.message,
+                code: error.code || '',
+            });
             logger.warn('phone capture spawn failed', { error: error.message });
         });
         proc.on('exit', (code, signal) => {
@@ -149,12 +209,21 @@ function startCapture(options = {}) {
                 session.message = code === 0 ? '监听已结束' : `监听已退出 code=${code} signal=${signal || 'none'}`;
             }
             session.updatedAt = Date.now();
+            addEvent(session, 'phone proxy capture process exited', {
+                code,
+                signal: signal || '',
+                stdoutTail: session.stdout.slice(-800),
+                stderrTail: session.stderr.slice(-800),
+            });
             if (activeSessionId === sessionId) activeSessionId = '';
         });
     } catch (error) {
         session.status = 'error';
         session.message = error.message;
         session.updatedAt = Date.now();
+        addEvent(session, 'phone proxy capture start failed', {
+            error: error.message,
+        });
         logger.warn('phone capture start failed', { error: error.message });
     }
 

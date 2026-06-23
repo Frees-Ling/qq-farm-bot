@@ -18,6 +18,9 @@ LOG_PATH = os.environ.get("FARM_CAPTURE_LOG", "")
 ONESHOT = os.environ.get("FARM_CAPTURE_ONESHOT", "1").lower() in ("1", "true", "yes", "on")
 
 _seen = set()
+_client_seen = set()
+_target_connect_seen = set()
+_host_seen = set()
 
 
 def write_log(message):
@@ -91,14 +94,38 @@ class QQFarmCodeCapture:
             f"username={USERNAME} session={SESSION_ID or '-'} panel={PANEL_API} oneshot={ONESHOT}"
         )
 
+    def client_connected(self, layer):
+        address = getattr(getattr(layer, "client", None), "peername", None) or getattr(layer, "peername", None)
+        key = str(address)
+        if key not in _client_seen:
+            _client_seen.add(key)
+            write_log(f"phone proxy client connected peer={key}")
+
+    def http_connect(self, flow):
+        host = (flow.request.host or "").lower()
+        port = flow.request.port
+        if host == TARGET_HOST.lower():
+            key = f"{host}:{port}"
+            if key not in _target_connect_seen:
+                _target_connect_seen.add(key)
+                write_log(f"phone proxy CONNECT target host={host} port={port}")
+
     def request(self, flow):
         request = flow.request
         host = (request.host or "").lower()
+        if host and host not in _host_seen and (
+            host == TARGET_HOST.lower()
+            or host.endswith(".qq.com")
+            or "qq" in host
+        ):
+            _host_seen.add(host)
+            write_log(f"phone proxy decrypted host={host} path={urllib.parse.urlparse(request.pretty_url).path}")
         if host != TARGET_HOST.lower():
             return
 
         parsed = urllib.parse.urlparse(request.pretty_url)
         if parsed.path != TARGET_PATH:
+            write_log(f"matched target host but path differs path={parsed.path}")
             return
 
         params = urllib.parse.parse_qs(parsed.query)
