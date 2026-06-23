@@ -819,13 +819,17 @@ function startAdminServer(dataProvider) {
     function pendingCodeHandler(req, res) {
         try {
             const code = req.query.code || (req.body && req.body.code) || '';
+            const uin = req.query.uin || (req.body && req.body.uin) || '';
+            const platform = req.query.platform || (req.body && req.body.platform) || 'qq';
             if (!code || /^-\d+$/.test(code)) {
+                adminLogger.warn('pending-code: 无效code', { code: code.substring(0, 20) });
                 return res.status(400).json({ ok: false, error: 'Missing or invalid code' });
             }
-            pendingCodes.push({ code, capturedAt: Date.now(), claimed: false });
-            adminLogger.info('pending code received', { code: code.substring(0, 20) });
+            pendingCodes.push({ code, uin, platform, capturedAt: Date.now(), claimed: false });
+            adminLogger.info('pending-code: 收到待认领Code', { code: code.substring(0, 20), uin, platform, pendingCount: pendingCodes.filter(c => !c.claimed).length });
             res.json({ ok: true });
         } catch (e) {
+            adminLogger.error('pending-code 异常', { error: e.message });
             res.status(500).json({ ok: false, error: e.message });
         }
     }
@@ -836,22 +840,30 @@ function startAdminServer(dataProvider) {
     app.post('/api/pending-code/claim', (req, res) => {
         try {
             const currentUser = req.currentUser;
-            if (!currentUser) return res.status(401).json({ ok: false, error: '未登录' });
+            if (!currentUser) {
+                adminLogger.warn('pending-code claim: 未登录');
+                return res.status(401).json({ ok: false, error: '未登录' });
+            }
 
-            // 找最旧的未认领Code
+            adminLogger.info('pending-code claim: 用户查找待认领Code', { username: currentUser.username });
             const idx = pendingCodes.findIndex(c => !c.claimed);
-            if (idx === -1) return res.json({ ok: true, data: null });
+            if (idx === -1) {
+                adminLogger.info('pending-code claim: 无待认领Code');
+                return res.json({ ok: true, data: null });
+            }
 
             const item = pendingCodes[idx];
             item.claimed = true;
             item.claimedBy = currentUser.username;
             item.claimedAt = Date.now();
+            adminLogger.info('pending-code claim: 认领成功', { username: currentUser.username, code: item.code.substring(0, 20) });
 
-            // 清理过期（保留最近50个）
+            // 清理过期
             while (pendingCodes.length > 50) pendingCodes.shift();
 
             res.json({ ok: true, data: { code: item.code } });
         } catch (e) {
+            adminLogger.error('pending-code claim 异常', { error: e.message });
             res.status(500).json({ ok: false, error: e.message });
         }
     });
