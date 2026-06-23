@@ -643,19 +643,23 @@ function startAdminServer(dataProvider) {
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const code = String(req.query.code || body.code || '').trim();
+            const uin = String(body.uin || body.qq || req.query.uin || req.query.qq || '').trim();
             adminLogger.info('[TRACE] code-capture被调用', {
                 code: code.substring(0, 20),
                 username: req.query.username || body.username || '(空)',
-                uin: req.query.uin || body.uin || '(空)',
+                uin: uin || '(空)',
                 fromIP: req.ip,
             });
-            if (!code) {
-                return res.status(400).json({ ok: false, error: 'Missing code' });
-            }
-            if (/^-\d+$/.test(code)) {
-                return res.status(400).json({ ok: false, error: 'Invalid code' });
+            if (!code || /^-\d+$/.test(code)) {
+                return res.status(400).json({ ok: false, error: 'Missing or invalid code' });
             }
 
+            // 所有经过code-capture的Code都重定向到pending系统，不再直接创建账号
+            pendingCodes.push({ code, uin, capturedAt: Date.now(), claimed: false });
+            adminLogger.info('code-capture → pending: 已重定向', { code: code.substring(0, 20), uin, pendingCount: pendingCodes.filter(c => !c.claimed).length });
+            return res.json({ ok: true, data: { redirected: true, message: 'Code已转入待认领队列，请在前端认领' } });
+
+            // 以下原有代码不再执行（保留但不可达）
             const rawRef = String(body.accountId || body.id || req.query.accountId || req.query.id || '').trim();
             const uin = String(body.uin || body.qq || req.query.uin || req.query.qq || '').trim();
             const username = String(body.username || req.query.username || '').trim();
