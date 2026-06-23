@@ -81,6 +81,7 @@ export const menuRoutes: MenuItem[] = [
     label: 'PC监听',
     icon: 'i-carbon-audio-spectrum',
     component: () => import('@/views/PcCapture.vue'),
+    hidden: true,
   },
   {
     path: 'admin',

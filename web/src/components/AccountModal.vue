@@ -37,8 +37,8 @@ const errorMessage = ref('')
 
 // 管理员配置
 const adminWxConfig = ref({
-  showWxConfigTab: true,
-  showWxLoginTab: true,
+  showWxConfigTab: false,
+  showWxLoginTab: false,
 })
 
 async function loadAdminWxConfigPublic() {
