@@ -51,6 +51,20 @@ export const menuRoutes: MenuItem[] = [
     component: () => import('@/views/Settings.vue'),
   },
   {
+    path: 'wechat',
+    name: 'wechatAccounts',
+    label: '微信扫码',
+    icon: 'i-carbon-qr-code',
+    component: () => import('@/views/WechatAccounts.vue'),
+  },
+  {
+    path: 'capture',
+    name: 'captureAdd',
+    label: '抓包添加',
+    icon: 'i-carbon-network-4',
+    component: () => import('@/views/CaptureAddAccount.vue'),
+  },
+  {
     path: 'admin',
     name: 'admin',
     label: '后台',
