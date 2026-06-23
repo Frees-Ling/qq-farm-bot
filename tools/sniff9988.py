@@ -94,10 +94,10 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
             _seen[dedupe_key] = now
 
         api = (
-        write_log(f"forward url={api[:200]}")
             f"{PANEL_API}?code={urllib.parse.quote(code)}"
             f"&username={urllib.parse.quote(username)}"
         )
+        write_log(f"forward url={api[:200]}")
         if uin:
             api += f"&uin={urllib.parse.quote(uin)}"
         if openid:
