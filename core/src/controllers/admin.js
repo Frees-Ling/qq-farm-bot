@@ -815,18 +815,22 @@ function startAdminServer(dataProvider) {
     // ============ 待认领Code（多用户抓包） ============
     const pendingCodes = [];
 
-    // sniff9988发来的待认领Code（公开接口）
-    app.post('/api/pending-code', (req, res) => {
+    // sniff9988发来的待认领Code（公开接口，支持GET+POST）
+    function pendingCodeHandler(req, res) {
         try {
-            const { code } = req.body || {};
-            if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
+            const code = req.query.code || (req.body && req.body.code) || '';
+            if (!code || /^-\d+$/.test(code)) {
+                return res.status(400).json({ ok: false, error: 'Missing or invalid code' });
+            }
             pendingCodes.push({ code, capturedAt: Date.now(), claimed: false });
             adminLogger.info('pending code received', { code: code.substring(0, 20) });
             res.json({ ok: true });
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }
-    });
+    }
+    app.get('/api/pending-code', pendingCodeHandler);
+    app.post('/api/pending-code', pendingCodeHandler);
 
     // 当前用户认领一个待处理Code（需登录）
     app.post('/api/pending-code/claim', (req, res) => {
