@@ -72,8 +72,8 @@ export const useUserStore = defineStore('user', () => {
     return res.data
   }
 
-  async function register(username: string, password: string, cardCode: string) {
-    const res = await api.post('/api/register', { username, password, cardCode }, { silent: true })
+  async function register(username: string, password: string, inviteCode: string) {
+    const res = await api.post('/api/register', { username, password, inviteCode }, { silent: true })
     return res.data
   }
 

@@ -13,7 +13,7 @@ const userStore = useUserStore()
 const isLogin = ref(true)
 const username = ref('')
 const password = ref('')
-const cardCode = ref('')
+const inviteCode = ref('')
 const error = ref('')
 const success = ref('')
 const loading = ref(false)
@@ -89,16 +89,16 @@ async function handleSubmit() {
       }
     }
     else {
-      if (!cardCode.value) {
-        error.value = '请输入卡密'
+      if (!inviteCode.value) {
+        error.value = '请输入邀请码'
         loading.value = false
         return
       }
-      const result = await userStore.register(username.value, password.value, cardCode.value)
+      const result = await userStore.register(username.value, password.value, inviteCode.value)
       if (result.ok) {
         success.value = '注册成功，请登录'
         isLogin.value = true
-        cardCode.value = ''
+        inviteCode.value = ''
       }
       else {
         error.value = result.error || '注册失败'
@@ -181,17 +181,17 @@ async function handleOAuthLogin(type: string) {
 
         <div v-if="!isLogin">
           <label class="mb-1 block text-sm font-medium" :style="{ color: 'var(--theme-text)' }">
-            卡密
+            邀请码
           </label>
           <BaseInput
-            id="cardCode"
-            v-model="cardCode"
+            id="inviteCode"
+            v-model="inviteCode"
             type="text"
-            placeholder="请输入卡密"
+            placeholder="请输入邀请码"
             :required="!isLogin"
           />
           <p class="mt-1 text-xs" :style="{ color: 'var(--theme-primary)' }">
-            请输入有效的卡密进行注册
+            联系管理员获取邀请码
           </p>
         </div>
 
