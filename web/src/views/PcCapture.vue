@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import { useAccountStore } from '@/stores/account'
 import { useToastStore } from '@/stores/toast'
+import { copyTextToClipboard } from '@/utils'
 
 const router = useRouter()
 const accountStore = useAccountStore()
@@ -15,13 +16,49 @@ const knownCount = ref(0)
 const capturedAccount = ref<any>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
+// 远程连接信息
+const connectionInfo = ref<any>(null)
+const isLoadingInfo = ref(true)
+const infoError = ref('')
+const isRemote = ref(false)
+const copiedWsUrl = ref(false)
+const copiedCommand = ref(false)
+
+// 判断是否本机访问
+function checkIsRemote() {
+  const host = window.location.hostname
+  return !['127.0.0.1', 'localhost', '::1', '0.0.0.0', ''].includes(host)
+}
+
+// 获取服务器连接信息
+async function fetchConnectionInfo() {
+  isLoadingInfo.value = true
+  infoError.value = ''
+  try {
+    const res = await api.get('/api/pc-capture/info', { silent: true })
+    if (res.data.ok) {
+      connectionInfo.value = res.data.data
+    } else {
+      throw new Error(res.data.error || '获取信息失败')
+    }
+  } catch (e: any) {
+    infoError.value = e?.message || '无法获取服务器连接信息'
+    connectionInfo.value = null
+  } finally {
+    isLoadingInfo.value = false
+  }
+}
+
+onMounted(() => {
+  isRemote.value = checkIsRemote()
+  fetchConnectionInfo()
+})
+
 async function startListening() {
   status.value = 'waiting'
   knownCount.value = accountStore.accounts.length
-  // 立即刷新一次
   await accountStore.fetchAccounts()
   knownCount.value = accountStore.accounts.length
-  // 开始轮询
   pollTimer = setInterval(checkForNewAccount, 3000)
 }
 
@@ -30,7 +67,6 @@ async function checkForNewAccount() {
     await accountStore.fetchAccounts()
     const current = accountStore.accounts.length
     if (current > knownCount.value) {
-      // 发现新账号！
       const newAccts = accountStore.accounts.filter(a => !a.deletedAt)
       const likely = newAccts[0]
       if (likely) {
@@ -61,6 +97,44 @@ async function startBot() {
   }
 }
 
+async function handleCopyWsUrl() {
+  if (!connectionInfo.value?.wsUrl) return
+  const ok = await copyTextToClipboard(connectionInfo.value.wsUrl)
+  if (ok) {
+    copiedWsUrl.value = true
+    setTimeout(() => { copiedWsUrl.value = false }, 2000)
+  }
+}
+
+async function handleCopyCommand() {
+  if (!connectionInfo.value?.patchCommand) return
+  const ok = await copyTextToClipboard(connectionInfo.value.patchCommand)
+  if (ok) {
+    copiedCommand.value = true
+    setTimeout(() => { copiedCommand.value = false }, 2000)
+  }
+}
+
+async function handleDownloadScript() {
+  try {
+    const res = await api.get('/api/pc-capture/download-patch', {
+      responseType: 'blob',
+      silent: true,
+    })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'patch-qq-farm-code-capture.js')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    toast.success('补丁脚本已下载')
+  } catch (e: any) {
+    toast.error('下载失败: ' + (e?.message || '未知错误'))
+  }
+}
+
 onUnmounted(() => stopPolling())
 </script>
 
@@ -74,8 +148,114 @@ onUnmounted(() => stopPolling())
       <BaseButton variant="outline" @click="router.push('/accounts')">账号列表</BaseButton>
     </div>
 
-    <!-- 工作原理 -->
-    <div class="card p-5">
+    <!-- 远程模式：连接信息卡片 -->
+    <div v-if="isRemote" class="card p-5">
+      <h2 class="text-lg font-semibold text-foreground mb-2">🔗 服务器连接信息</h2>
+
+      <!-- 加载中 -->
+      <div v-if="isLoadingInfo" class="space-y-2 animate-pulse">
+        <div class="h-4 w-48 rounded bg-gray-200 dark:bg-gray-700" />
+        <div class="h-4 w-64 rounded bg-gray-200 dark:bg-gray-700" />
+        <div class="h-4 w-56 rounded bg-gray-200 dark:bg-gray-700" />
+      </div>
+
+      <!-- 加载失败 -->
+      <div v-else-if="infoError" class="rounded-lg border border-yellow-500/30 bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+        ⚠️ {{ infoError }}
+      </div>
+
+      <!-- 连接信息 -->
+      <div v-else-if="connectionInfo" class="space-y-3 text-sm">
+        <div class="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+          <span class="text-foreground-muted">服务器IP</span>
+          <code class="font-mono font-medium">{{ connectionInfo.publicIp || '未检测到' }}</code>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+          <span class="text-foreground-muted">嗅探服务</span>
+          <span v-if="connectionInfo.sniffRunning" class="flex items-center gap-1.5 text-green-600">
+            <span class="inline-block h-2 w-2 rounded-full bg-green-500" />
+            {{ connectionInfo.sniffHealth === 'healthy' ? '运行正常' : '端口监听中' }}
+          </span>
+          <span v-else class="flex items-center gap-1.5 text-red-500">
+            <span class="inline-block h-2 w-2 rounded-full bg-red-500" />
+            未运行
+          </span>
+        </div>
+
+        <div v-if="connectionInfo.ufwActive" class="rounded-lg border p-3 text-sm" :class="connectionInfo.ufwPortAllowed ? 'border-green-500/30 bg-green-50 dark:bg-green-900/20' : 'border-yellow-500/30 bg-yellow-50 dark:bg-yellow-900/20'">
+          <div class="flex items-center gap-2">
+            <span>🛡️ UFW防火墙</span>
+            <span :class="connectionInfo.ufwPortAllowed ? 'text-green-600' : 'text-yellow-600'">
+              {{ connectionInfo.ufwPortAllowed ? '9988端口已放行' : '⚠️ 9988端口可能被阻挡' }}
+            </span>
+          </div>
+          <p v-if="!connectionInfo.ufwPortAllowed" class="mt-1 text-xs text-foreground-muted">
+            在服务器上运行: <code class="rounded bg-gray-100 px-1 dark:bg-gray-700">ufw allow 9988</code>
+          </p>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+          <span class="text-foreground-muted">WebSocket地址</span>
+          <div class="flex items-center gap-2">
+            <code class="text-xs font-mono">{{ connectionInfo.wsUrl }}</code>
+            <button class="text-xs px-2 py-1 rounded transition-colors" :class="copiedWsUrl ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'" @click="handleCopyWsUrl">
+              {{ copiedWsUrl ? '已复制!' : '复制' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 远程模式：配置引导 -->
+    <div v-if="isRemote && connectionInfo && !isLoadingInfo && !infoError" class="card p-5">
+      <h2 class="text-lg font-semibold text-foreground mb-3">📋 远程配置步骤</h2>
+      <div class="space-y-4">
+        <div class="flex items-start gap-3">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">1</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-foreground">下载补丁脚本</p>
+            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上</p>
+            <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadScript">
+              ⬇️ 下载 patch-qq-farm-code-capture.js
+            </BaseButton>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">2</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-foreground">在你的电脑上运行补丁</p>
+            <p class="text-xs text-foreground-muted mt-0.5">打开终端(Cmd/PowerShell)，进入脚本所在目录，执行以下命令:</p>
+            <div class="mt-2 flex items-center gap-2">
+              <code class="flex-1 rounded bg-gray-100 p-2 text-xs font-mono break-all dark:bg-gray-800">{{ connectionInfo.patchCommand }}</code>
+              <button class="shrink-0 text-xs px-3 py-2 rounded transition-colors" :class="copiedCommand ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'" @click="handleCopyCommand">
+                {{ copiedCommand ? '已复制!' : '复制' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">3</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-foreground">打开QQ经典农场</p>
+            <p class="text-xs text-foreground-muted mt-0.5">在你的电脑上登录QQ，打开QQ经典农场小程序。补丁会自动拦截Code并发送到服务器。</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">4</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-foreground">点击下方按钮开始监听</p>
+            <p class="text-xs text-foreground-muted mt-0.5">等待服务器收到Code后自动创建账号</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 本地模式：工作原理 -->
+    <div v-if="!isRemote" class="card p-5">
       <h2 class="text-lg font-semibold text-foreground mb-2">⚡ 原理</h2>
       <p class="text-sm text-foreground-muted leading-relaxed">
         QQ经典农场的 game.js 已被注入捕获补丁。当你打开PC QQ上的QQ经典农场时，
@@ -83,14 +263,11 @@ onUnmounted(() => stopPolling())
       </p>
       <div class="mt-3 space-y-1 text-sm">
         <div class="flex items-center gap-2">
-          <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
-          <span>game.js 补丁:</span>
-          <span class="text-green-600 font-medium">✅ 已注入</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
+          <span class="inline-block h-2 w-2 rounded-full" :class="connectionInfo?.sniffRunning ? 'bg-green-500' : 'bg-red-500'" />
           <span>Code接收服务 (端口9988):</span>
-          <span class="text-green-600 font-medium">✅ 运行中</span>
+          <span :class="connectionInfo?.sniffRunning ? 'text-green-600' : 'text-red-600'" class="font-medium">
+            {{ connectionInfo?.sniffRunning ? '✅ 运行中' : '❌ 未运行' }}
+          </span>
         </div>
       </div>
     </div>
@@ -101,7 +278,7 @@ onUnmounted(() => stopPolling())
       <div v-if="status === 'idle'" class="flex flex-col items-center gap-4 py-8">
         <div class="i-carbon-audio-spectrum text-6xl text-foreground-muted" />
         <p class="text-lg text-foreground">准备好后，点击开始监听</p>
-        <p class="text-sm text-foreground-muted">然后打开PC QQ上的QQ经典农场</p>
+        <p class="text-sm text-foreground-muted">{{ isRemote ? '确保已按上述步骤配置好补丁' : '然后打开PC QQ上的QQ经典农场' }}</p>
         <BaseButton variant="primary" size="lg" @click="startListening">
           🎯 开始监听
         </BaseButton>

@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const process = require('node:process');
 const express = require('express');
 const fetch = require('node-fetch');
@@ -768,7 +769,7 @@ function startAdminServer(dataProvider) {
 
     app.use('/api', (req, res, next) => {
         if (req.path === '/pending-code') return next(); // 公开
-        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available') return next();
+        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available' || req.path === '/pc-capture/info' || req.path === '/pc-capture/download-patch') return next();
         return authRequired(req, res, next);
     });
 
@@ -925,6 +926,114 @@ function startAdminServer(dataProvider) {
             return res.json({ ok: true, data: data || { status: 'idle', message: '未启动监听' } });
         } catch (e) {
             return res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // ============ PC抓码信息 API ============
+    let pcCaptureInfoCache = { data: null, at: 0 };
+
+    app.get('/api/pc-capture/info', async (req, res) => {
+        try {
+            // 缓存5分钟
+            if (pcCaptureInfoCache.data && Date.now() - pcCaptureInfoCache.at < 300000) {
+                return res.json({ ok: true, data: pcCaptureInfoCache.data });
+            }
+
+            // 1. 获取公网IP
+            let publicIp = process.env.FARM_PUBLIC_IP || '';
+            if (!publicIp) {
+                try {
+                    const execSync = require('child_process').execSync;
+                    publicIp = execSync('curl -s --max-time 5 ifconfig.me 2>/dev/null || curl -s --max-time 5 ip.sb 2>/dev/null || true', { timeout: 8000 }).toString().trim();
+                } catch {}
+            }
+            if (!publicIp) {
+                try {
+                    const ifaces = os.networkInterfaces();
+                    for (const name of Object.keys(ifaces)) {
+                        for (const iface of ifaces[name] || []) {
+                            if (iface.family === 'IPv4' && !iface.internal) {
+                                publicIp = iface.address;
+                                break;
+                            }
+                        }
+                        if (publicIp) break;
+                    }
+                } catch {}
+            }
+
+            // 2. 检测sniff服务状态
+            let sniffRunning = false;
+            let sniffHealth = 'unknown';
+            try {
+                const execSync = require('child_process').execSync;
+                const health = execSync('curl -s --max-time 2 http://127.0.0.1:9988/health 2>/dev/null || true', { timeout: 3000 }).toString().trim();
+                if (health === 'ok') {
+                    sniffRunning = true;
+                    sniffHealth = 'healthy';
+                }
+            } catch {}
+            if (!sniffRunning) {
+                try {
+                    const execSync = require('child_process').execSync;
+                    const listening = execSync('ss -tlnp 2>/dev/null | grep -q ":9988 " && echo 1 || echo 0', { timeout: 3000 }).toString().trim();
+                    if (listening === '1') {
+                        sniffRunning = true;
+                        sniffHealth = 'listening';
+                    }
+                } catch {
+                    sniffHealth = 'stopped';
+                }
+            }
+
+            // 3. 检测UFW状态
+            let ufwActive = false;
+            let ufwPortAllowed = false;
+            let ufwStatus = 'unknown';
+            try {
+                const execSync = require('child_process').execSync;
+                const ufwOut = execSync('ufw status 2>/dev/null || true', { timeout: 3000 }).toString().trim();
+                if (ufwOut.includes('Status: active')) {
+                    ufwActive = true;
+                    ufwPortAllowed = ufwOut.includes('9988');
+                    ufwStatus = ufwPortAllowed ? 'active_allowed' : 'active_blocked';
+                } else if (ufwOut.includes('Status: inactive')) {
+                    ufwStatus = 'inactive';
+                }
+            } catch {
+                ufwStatus = 'not_installed';
+            }
+
+            const sniffPort = Number(process.env.FARM_CAPTURE_PORT) || 9988;
+            const safeIp = publicIp || 'SERVER_IP';
+            const result = {
+                publicIp: safeIp,
+                sniffPort,
+                sniffRunning,
+                sniffHealth,
+                ufwActive,
+                ufwPortAllowed,
+                ufwStatus,
+                wsUrl: `ws://${safeIp}:${sniffPort}/admin`,
+                httpUrl: `http://${safeIp}:${sniffPort}/admin`,
+                patchCommand: `node patch-qq-farm-code-capture.js --capture-ws ws://${safeIp}:${sniffPort}/admin`,
+                downloadUrl: '/api/pc-capture/download-patch',
+                defaultTarget: 'ws://127.0.0.1:9988/admin',
+            };
+
+            pcCaptureInfoCache = { data: result, at: Date.now() };
+            res.json({ ok: true, data: result });
+        } catch (e) {
+            res.json({ ok: true, data: { publicIp: '', sniffPort: 9988, sniffRunning: false, sniffHealth: 'error', ufwActive: false, ufwPortAllowed: false, ufwStatus: 'error', wsUrl: '', httpUrl: '', patchCommand: '', error: e.message } });
+        }
+    });
+
+    app.get('/api/pc-capture/download-patch', (req, res) => {
+        const scriptPath = path.join(__dirname, '..', '..', '..', 'tools', 'patch-qq-farm-code-capture.js');
+        if (fs.existsSync(scriptPath)) {
+            res.download(scriptPath, 'patch-qq-farm-code-capture.js');
+        } else {
+            res.status(404).json({ ok: false, error: '补丁脚本文件未找到' });
         }
     });
 
