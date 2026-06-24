@@ -1,8 +1,29 @@
-# QQ 农场多账号挂机 + Web 面板
+# QQ农场 Bot - 自动化管理面板
 
-基于 Node.js 的 QQ 农场自动化工具，支持多账号管理、Web 控制面板、实时日志与数据分析。
-基于[Penty-d/qq-farm-bot-ui](https://github.com/Penty-d/qq-farm-bot-ui)项目二开。
-现在qq扫码用不了，自行寻找方法获取code。新协议参考[sulimu2/qq-farm-bot](https://github.com/sulimu2/qq-farm-bot)项目。目前qq端好友接口寄了，等大佬修复
+基于 Node.js 的 QQ 农场自动化工具，支持多账号管理、Web 控制面板、PC 监听捕获、手机抓包、实时日志与数据分析。
+
+> 📖 **文档：**
+> - [🚀 快速部署](deploy/deploy.sh) — 全新服务器一键部署脚本
+> - [⚙️ 管理员文档](docs/ADMIN.md) — 日常运维、配置、故障排除
+> - [💻 开发者文档](docs/DEVELOPER.md) — 架构说明、二次开发指南
+
+## 快速部署（全新服务器）
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Frees-Ling/qq-farm-bot/main/deploy/deploy.sh)
+```
+
+一行命令完成：装环境 → 拉代码 → 装依赖 → 构建前端 → 启动服务。部署后访问 `http://<IP>:3000` 使用管理面板。
+
+> 手动部署、Docker 部署等更多方式见 [管理员文档](docs/ADMIN.md#1-快速部署)。
+
+---
+
+**致谢：**
+- 基于 [Penty-d/qq-farm-bot-ui](https://github.com/Penty-d/qq-farm-bot-ui) 二开
+- 核心功能：[linguo2625469/qq-farm-bot](https://github.com/linguo2625469/qq-farm-bot)
+- 部分功能：[QianChenJun/qq-farm-bot](https://github.com/QianChenJun/qq-farm-bot)
+- 新协议参考：[sulimu2/qq-farm-bot](https://github.com/sulimu2/qq-farm-bot)
 
 ## 技术栈
 
