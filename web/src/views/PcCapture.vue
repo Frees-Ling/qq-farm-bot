@@ -144,7 +144,7 @@ async function handleDownloadPs1() {
     const url = window.URL.createObjectURL(new Blob([res.data]))
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'qq-farm-patch.bat')
+    link.setAttribute('download', 'qq-farm-patch.ps1')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -235,9 +235,9 @@ onUnmounted(() => stopPolling())
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">1</span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-foreground">下载一键配置脚本</p>
-            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上，双击运行即可自动完成补丁注入</p>
+            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上，右键 → 「用 PowerShell 运行」即可自动完成全栈配置</p>
             <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadPs1">
-              ⬇️ 下载一键配置脚本 (qq-farm-patch.bat)
+              ⬇️ 下载一键全栈配置脚本 (qq-farm-patch.ps1)
             </BaseButton>
           </div>
         </div>
@@ -246,7 +246,7 @@ onUnmounted(() => stopPolling())
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">2</span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-foreground">在你的电脑上运行</p>
-            <p class="text-xs text-foreground-muted mt-0.5">右键点击下载的 <code>qq-farm-patch.bat</code> → 「以管理员身份运行」。脚本会自动检测Node.js、下载补丁并注入。</p>
+            <p class="text-xs text-foreground-muted mt-0.5">右键点击下载的 <code>qq-farm-patch.ps1</code> → 「用 PowerShell 运行」。脚本会自动检测/安装Node.js、下载补丁并注入。</p>
           </div>
         </div>
 
