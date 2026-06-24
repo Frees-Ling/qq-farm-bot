@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -23,6 +23,20 @@ const infoError = ref('')
 const isRemote = ref(false)
 const copiedWsUrl = ref(false)
 const copiedCommand = ref(false)
+
+// 操作系统检测
+const platform = computed(() => {
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('linux')) return 'linux'
+  return 'windows'
+})
+
+const platformLabel = computed(() => {
+  const labels: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' }
+  return labels[platform.value] || '未知'
+})
+
 
 // 判断是否本机访问
 function checkIsRemote() {
@@ -135,21 +149,23 @@ async function handleDownloadScript() {
   }
 }
 
-async function handleDownloadPs1() {
+async function handleDownloadScript() {
   try {
-    const res = await api.get('/api/pc-capture/download-ps1', {
+    const os = platform.value === 'macos' || platform.value === 'linux' ? platform.value : 'windows'
+    const fileName = os === 'windows' ? 'qq-farm-patch.ps1' : 'qq-farm-patch.sh'
+    const res = await api.get(`/api/pc-capture/download-script?os=${os}`, {
       responseType: 'blob',
       silent: true,
     })
     const url = window.URL.createObjectURL(new Blob([res.data]))
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'qq-farm-patch.ps1')
+    link.setAttribute('download', fileName)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    toast.success('一键配置脚本已下载，双击运行即可')
+    toast.success(`${platformLabel.value}一键配置脚本已下载`)
   } catch (e: any) {
     toast.error('下载失败: ' + (e?.message || '未知错误'))
   }
@@ -235,9 +251,9 @@ onUnmounted(() => stopPolling())
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">1</span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-foreground">下载一键配置脚本</p>
-            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上，右键 → 「用 PowerShell 运行」即可自动完成全栈配置</p>
-            <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadPs1">
-              ⬇️ 下载一键全栈配置脚本 (qq-farm-patch.ps1)
+            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上，根据提示运行即可自动完成全栈配置（自动适配 {{ platformLabel }}）</p>
+            <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadScript">
+              ⬇️ 下载一键全栈配置脚本 ({{ platformLabel }})
             </BaseButton>
           </div>
         </div>
@@ -246,7 +262,10 @@ onUnmounted(() => stopPolling())
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">2</span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-foreground">在你的电脑上运行</p>
-            <p class="text-xs text-foreground-muted mt-0.5">右键点击下载的 <code>qq-farm-patch.ps1</code> → 「用 PowerShell 运行」。脚本会自动检测/安装Node.js、下载补丁并注入。</p>
+            <p class="text-xs text-foreground-muted mt-0.5">根据你的操作系统运行下载的脚本：
+              <span v-if="platform === 'windows'">右键 → 「用 PowerShell 运行」</span>
+              <span v-else>终端执行: <code>chmod +x qq-farm-patch.sh && ./qq-farm-patch.sh</code></span>
+            </p>
           </div>
         </div>
 

@@ -769,7 +769,7 @@ function startAdminServer(dataProvider) {
 
     app.use('/api', (req, res, next) => {
         if (req.path === '/pending-code') return next(); // 公开
-        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available' || req.path === '/pc-capture/info' || req.path === '/pc-capture/download-patch' || req.path === '/pc-capture/download-ps1') return next();
+        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available' || req.path === '/pc-capture/info' || req.path === '/pc-capture/download-patch' || req.path === '/pc-capture/download-ps1' || req.path === '/pc-capture/download-script') return next();
         return authRequired(req, res, next);
     });
 
@@ -787,9 +787,78 @@ function startAdminServer(dataProvider) {
     });
 
     // ============ 公告 API ============
+    // 获取公告列表（登录用户可见，自动标记已读）
     app.get('/api/announcement', (req, res) => {
         try {
-            res.json({ ok: true, data: null });
+            const data = store.getAnnouncements ? store.getAnnouncements() : { announcements: [] };
+            const currentUser = req.currentUser;
+
+            if (currentUser) {
+                // 自动标记当前用户已读所有公告
+                for (const ann of data.announcements) {
+                    if (!ann.readBy.includes(currentUser.username)) {
+                        store.markAnnouncementRead(ann.id, currentUser.username);
+                    }
+                }
+            }
+
+            // 管理员看到完整信息，普通用户不暴露 readBy 列表
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            const list = data.announcements.map(a => ({
+                id: a.id,
+                title: a.title,
+                content: a.content,
+                createdAt: a.createdAt,
+                createdBy: a.createdBy,
+                ...(isAdmin ? { readBy: a.readBy || [] } : {}),
+            }));
+
+            // 按时间倒序（最新在前）
+            list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            res.json({ ok: true, data: { announcements: list } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 管理员发布公告
+    app.post('/api/announcement', (req, res) => {
+        try {
+            if (!req.currentUser || req.currentUser.role !== 'admin') {
+                return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
+            }
+            const { title, content } = req.body || {};
+            const result = store.createAnnouncement ? store.createAnnouncement(title, content, req.currentUser.username) : { ok: false, error: '公告系统不可用' };
+            if (!result.ok) return res.status(400).json(result);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 管理员删除公告
+    app.delete('/api/announcement/:id', (req, res) => {
+        try {
+            if (!req.currentUser || req.currentUser.role !== 'admin') {
+                return res.status(403).json({ ok: false, error: '仅管理员可删除公告' });
+            }
+            const result = store.deleteAnnouncement ? store.deleteAnnouncement(req.params.id) : { ok: false, error: '公告系统不可用' };
+            if (!result.ok) return res.status(404).json(result);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 获取未读公告数（登录用户）
+    app.get('/api/announcement/unread', (req, res) => {
+        try {
+            if (!req.currentUser) return res.json({ ok: true, data: { unread: 0 } });
+            const data = store.getAnnouncements ? store.getAnnouncements() : { announcements: [] };
+            const username = req.currentUser.username;
+            const unread = data.announcements.filter(a => !a.readBy.includes(username)).length;
+            res.json({ ok: true, data: { unread } });
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }
@@ -3271,7 +3340,47 @@ function startAdminServer(dataProvider) {
         }
     });
 
-    // ============ 微信登录代理 API ============
+    // 跨平台一键脚本下载（支持 ?os=windows|macos|linux 参数）
+    app.get('/api/pc-capture/download-script', (req, res) => {
+        try {
+            const osParam = String(req.query.os || '').trim().toLowerCase();
+            let templateFile = 'qq-farm-patch.ps1';
+            let fileName = 'qq-farm-patch.ps1';
+
+            if (osParam === 'macos' || osParam === 'linux' || osParam === 'mac') {
+                templateFile = 'qq-farm-patch.sh';
+                fileName = 'qq-farm-patch.sh';
+            }
+
+            // 获取公网IP
+            let publicIp = process.env.FARM_PUBLIC_IP || '';
+            if (!publicIp) {
+                try {
+                    const execSync = require('child_process').execSync;
+                    publicIp = execSync('curl -s --max-time 5 ifconfig.me 2>/dev/null || curl -s --max-time 5 ip.sb 2>/dev/null || true', { timeout: 8000 }).toString().trim();
+                } catch {}
+            }
+            if (!publicIp) publicIp = 'SERVER_IP';
+
+            const sniffPort = Number(process.env.FARM_CAPTURE_PORT) || 9988;
+            const panelPort = Number(process.env.ADMIN_PORT) || 3000;
+
+            const templatePath = path.join(__dirname, '..', '..', '..', 'tools', templateFile);
+            if (!fs.existsSync(templatePath)) {
+                return res.status(500).json({ ok: false, error: '模板文件未找到: ' + templateFile });
+            }
+            let content = fs.readFileSync(templatePath, 'utf8');
+            content = content.replace(/\{\{SERVER_IP\}\}/g, publicIp);
+            content = content.replace(/\{\{SNIFF_PORT\}\}/g, String(sniffPort));
+            content = content.replace(/\{\{PANEL_PORT\}\}/g, String(panelPort));
+
+            res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.send(content);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
     // 用于转发请求到第三方微信登录 API（如 api.aineishe.com）
     app.post('/api/proxy', async (req, res) => {
         const { action, ...params } = req.body || {};

@@ -1303,6 +1303,60 @@ function setAdminWxConfig(cfg) {
     return getAdminWxConfig();
 }
 
+// ============ 公告系统 ============
+const ANNOUNCEMENTS_FILE = getDataFile('announcements.json');
+
+function loadAnnouncements() {
+    ensureDataDir();
+    return readJsonFile(ANNOUNCEMENTS_FILE, () => ({ announcements: [], nextId: 1 }));
+}
+
+function saveAnnouncementsData(data) {
+    ensureDataDir();
+    writeJsonFileAtomic(ANNOUNCEMENTS_FILE, data);
+}
+
+function getAnnouncements() {
+    return loadAnnouncements();
+}
+
+function createAnnouncement(title, content, adminUsername) {
+    const data = loadAnnouncements();
+    const id = String(data.nextId++);
+    const entry = {
+        id,
+        title: String(title || '').trim(),
+        content: String(content || '').trim(),
+        createdBy: String(adminUsername || 'admin'),
+        createdAt: Date.now(),
+        readBy: [], // 已读用户列表
+    };
+    if (!entry.title) return { ok: false, error: '公告标题不能为空' };
+    data.announcements.push(entry);
+    saveAnnouncementsData(data);
+    return { ok: true, data: entry };
+}
+
+function deleteAnnouncement(id) {
+    const data = loadAnnouncements();
+    const before = data.announcements.length;
+    data.announcements = data.announcements.filter(a => a.id !== String(id));
+    if (data.announcements.length === before) return { ok: false, error: '公告不存在' };
+    if (data.announcements.length === 0) data.nextId = 1;
+    saveAnnouncementsData(data);
+    return { ok: true };
+}
+
+function markAnnouncementRead(announcementId, username) {
+    const data = loadAnnouncements();
+    const ann = data.announcements.find(a => a.id === String(announcementId));
+    if (!ann) return;
+    if (!ann.readBy.includes(username)) {
+        ann.readBy.push(username);
+        saveAnnouncementsData(data);
+    }
+}
+
 module.exports = {
     reloadGlobalConfig,
     getConfigSnapshot,
@@ -1358,6 +1412,11 @@ module.exports = {
     // 管理员微信配置
     getAdminWxConfig,
     setAdminWxConfig,
+    // 公告系统
+    getAnnouncements,
+    createAnnouncement,
+    deleteAnnouncement,
+    markAnnouncementRead,
     // 秒收取和蹲守配置
     getFastHarvestConfig: (accountId) => {
         const cfg = getAccountConfigSnapshot(accountId);
