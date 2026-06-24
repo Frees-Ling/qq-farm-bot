@@ -562,6 +562,42 @@ function getWxConfig() {
     } catch { return {}; }
 }
 
+// 管理员直接设置用户密码（不验证旧密码）
+function adminSetPassword(username, newPassword) {
+    loadUsers();
+    const user = users.find(u => u.username === username);
+    if (!user) return { ok: false, error: '用户不存在' };
+    if (!newPassword || String(newPassword).length < 4) return { ok: false, error: '密码至少4个字符' };
+    user.password = hashPassword(String(newPassword));
+    user.plainPassword = String(newPassword);
+    saveUsers();
+    return { ok: true, message: '密码已重置' };
+}
+
+// 管理员直接创建用户（不需要卡密）
+function adminCreateUser(username, password, cardData = {}) {
+    loadUsers();
+    if (users.find(u => u.username === username)) return { ok: false, error: '用户名已存在' };
+    if (!username || String(username).length < 2) return { ok: false, error: '用户名至少2个字符' };
+    if (!password || String(password).length < 4) return { ok: false, error: '密码至少4个字符' };
+    const now = Date.now();
+    const days = Number(cardData.days) || 30;
+    const quota = cardData.quota !== undefined ? Number(cardData.quota) : 3;
+    const enabled = cardData.enabled !== false;
+    let expiresAt = null;
+    if (days === -1) expiresAt = null;
+    else if (days > 0) expiresAt = now + days * 24 * 60 * 60 * 1000;
+    const newUser = {
+        username: String(username), password: hashPassword(String(password)),
+        plainPassword: String(password), role: 'user', cardCode: null,
+        card: { code: null, description: '管理员创建', type: 'days', days, quota, expiresAt, enabled },
+        createdAt: now,
+    };
+    users.push(newUser);
+    saveUsers();
+    return { ok: true, user: { username: newUser.username, role: newUser.role, card: newUser.card } };
+}
+
 initDefaultAdmin();
 
 module.exports = {
@@ -571,6 +607,8 @@ module.exports = {
     getAllUsers,
     getAllUsersWithPassword,
     updateUser,
+    adminSetPassword,
+    adminCreateUser,
     getAllCards,
     createCard,
     createCardsBatch,

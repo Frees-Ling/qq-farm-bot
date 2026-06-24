@@ -84,6 +84,13 @@ export const menuRoutes: MenuItem[] = [
     hidden: true,
   },
   {
+    path: 'tutorial',
+    name: 'tutorial',
+    label: '使用教程',
+    icon: 'i-carbon-education',
+    component: () => import('@/views/Tutorial.vue'),
+  },
+  {
     path: 'logs',
     name: 'systemLogs',
     label: '系统日志',

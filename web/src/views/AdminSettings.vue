@@ -79,6 +79,20 @@ const selectedUser = ref<UserRow | null>(null)
 const editExpiresAt = ref<number | null>(null)
 const editQuota = ref<number>(3)
 const editExpiresAtInput = ref<string>('')
+const editEnabled = ref(true)
+const editDays = ref(0)
+const editPassword = ref('')
+const showPasswordReset = ref(false)
+
+// 创建用户
+const showCreateUserModal = ref(false)
+const newUser = ref({
+  username: '',
+  password: '',
+  days: 30,
+  quota: 3,
+  enabled: true,
+})
 
 // ============ 聚合登录配置 ============
 const oauthConfig = ref({
@@ -401,29 +415,63 @@ function openEditModal(user: UserRow) {
   editExpiresAt.value = user.card?.expiresAt || null
   editQuota.value = user.card?.quota || 3
   editExpiresAtInput.value = formatDateTimeLocal(editExpiresAt.value)
+  editEnabled.value = user.card?.enabled !== false
+  editDays.value = user.card?.days || 0
+  editPassword.value = ''
+  showPasswordReset.value = false
   showEditModal.value = true
 }
 
 async function saveUserEdit() {
-  if (!selectedUser.value)
-    return
-
+  if (!selectedUser.value) return
   try {
-    const result = await userStore.updateUser(selectedUser.value.username, {
-      expiresAt: editExpiresAt.value,
-      quota: editQuota.value,
-    })
+    const updates: any = { expiresAt: editExpiresAt.value, quota: editQuota.value, enabled: editEnabled.value }
+    if (editDays.value > 0 || editDays.value === -1) updates.days = editDays.value
+    const result = await userStore.updateUser(selectedUser.value.username, updates)
     if (result.ok) {
       toast.success('修改成功')
       showEditModal.value = false
       await fetchUsers()
-    }
-    else {
+    } else {
       toast.error(result.error || '修改失败')
     }
-  }
-  catch (e: any) {
+  } catch (e: any) {
     toast.error(e.message || '修改失败')
+  }
+}
+
+async function resetUserPassword() {
+  if (!selectedUser.value || !editPassword.value) { toast.warning('请输入新密码'); return }
+  try {
+    const res = await api.post(`/api/admin/users/${selectedUser.value.username}/reset-password`, { newPassword: editPassword.value })
+    if (res.data.ok) {
+      toast.success('密码已重置，该用户已被强制下线')
+      editPassword.value = ''
+      showPasswordReset.value = false
+      showEditModal.value = false
+      await fetchUsers()
+    } else {
+      toast.error(res.data.error || '重置失败')
+    }
+  } catch (e: any) {
+    toast.error(e.message || '重置失败')
+  }
+}
+
+async function createUser() {
+  if (!newUser.value.username || !newUser.value.password) { toast.warning('请填写用户名和密码'); return }
+  try {
+    const res = await api.post('/api/admin/users/create', newUser.value)
+    if (res.data.ok) {
+      toast.success('用户创建成功')
+      showCreateUserModal.value = false
+      newUser.value = { username: '', password: '', days: 30, quota: 3, enabled: true }
+      await fetchUsers()
+    } else {
+      toast.error(res.data.error || '创建失败')
+    }
+  } catch (e: any) {
+    toast.error(e.message || '创建失败')
   }
 }
 
@@ -797,13 +845,11 @@ onMounted(() => {
     <!-- 用户管理标签页 -->
     <div v-if="activeTab === 'users'" class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg text-gray-800 font-semibold dark:text-gray-200">
-          用户管理
-        </h2>
-        <BaseButton variant="primary" size="sm" @click="fetchUsers">
-          刷新
-        </BaseButton>
-      </div>
+        <div class="flex items-center gap-2">
+          <h2 class="text-lg text-gray-800 font-semibold dark:text-gray-200">用户管理</h2>
+          <BaseButton variant="primary" size="sm" @click="showCreateUserModal = true">创建用户</BaseButton>
+          <BaseButton variant="outline" size="sm" @click="fetchUsers">刷新</BaseButton>
+        </div>
 
       <!-- 用户列表 -->
       <div class="overflow-hidden rounded-lg bg-white shadow dark:bg-gray-800">
@@ -1051,41 +1097,63 @@ onMounted(() => {
     </div>
 
     <!-- 编辑用户弹窗 -->
-    <div
-      v-if="showEditModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-      @click.self="showEditModal = false"
-    >
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" @click.self="showEditModal = false">
       <div class="max-w-md w-full rounded-lg bg-white p-6 dark:bg-gray-800">
-        <h2 class="mb-4 text-xl text-gray-900 font-bold dark:text-white">
-          编辑用户
-        </h2>
+        <h2 class="mb-4 text-xl text-gray-900 font-bold dark:text-white">编辑用户</h2>
         <div class="space-y-4">
           <div>
             <label class="mb-1 block text-sm text-gray-700 font-medium dark:text-gray-300">用户名</label>
             <BaseInput :model-value="selectedUser?.username" disabled />
           </div>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-700 font-medium dark:text-gray-300">启用状态</span>
+            <input v-model="editEnabled" type="checkbox" class="rounded border-gray-300 dark:border-gray-600">
+          </div>
           <div>
             <label class="mb-1 block text-sm text-gray-700 font-medium dark:text-gray-300">过期时间</label>
-            <input
-              v-model="editExpiresAtInput"
-              type="datetime-local"
-              class="w-full border border-gray-300 rounded-lg bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              @blur="editExpiresAt = parseDateTimeLocal(editExpiresAtInput)"
-            >
+            <input v-model="editExpiresAtInput" type="datetime-local" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white" @blur="editExpiresAt = parseDateTimeLocal(editExpiresAtInput)">
+          </div>
+          <div>
+            <label class="mb-1 block text-sm text-gray-700 font-medium dark:text-gray-300">天数（-1=永久，0=不修改）</label>
+            <BaseInput v-model.number="editDays" type="number" placeholder="0" />
+            <p class="mt-1 text-xs text-gray-500">设置天数会从当前时间重新计算过期时间</p>
           </div>
           <div>
             <label class="mb-1 block text-sm text-gray-700 font-medium dark:text-gray-300">配额</label>
             <BaseInput v-model.number="editQuota" type="number" placeholder="3" />
           </div>
+          <div class="border-t pt-4 dark:border-gray-700">
+            <label class="mb-1 block text-sm text-gray-700 font-medium dark:text-gray-300">重置密码</label>
+            <div class="flex gap-2">
+              <BaseInput v-model="editPassword" type="password" placeholder="输入新密码" class="flex-1" />
+              <BaseButton variant="warning" size="sm" :disabled="!editPassword" @click="resetUserPassword">重置</BaseButton>
+            </div>
+          </div>
         </div>
         <div class="mt-6 flex justify-end space-x-3">
-          <BaseButton variant="secondary" @click="showEditModal = false">
-            取消
-          </BaseButton>
-          <BaseButton variant="primary" @click="saveUserEdit">
-            保存
-          </BaseButton>
+          <BaseButton variant="secondary" @click="showEditModal = false">取消</BaseButton>
+          <BaseButton variant="primary" @click="saveUserEdit">保存</BaseButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建用户弹窗 -->
+    <div v-if="showCreateUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" @click.self="showCreateUserModal = false">
+      <div class="max-w-md w-full rounded-lg bg-white p-6 dark:bg-gray-800">
+        <h2 class="mb-4 text-xl text-gray-900 font-bold dark:text-white">创建用户</h2>
+        <div class="space-y-4">
+          <BaseInput v-model="newUser.username" label="用户名" placeholder="用户名" />
+          <BaseInput v-model="newUser.password" type="password" label="密码" placeholder="密码" />
+          <BaseInput v-model.number="newUser.days" type="number" label="天数（-1=永久）" placeholder="30" />
+          <BaseInput v-model.number="newUser.quota" type="number" label="配额" placeholder="3" />
+          <div class="flex items-center gap-3">
+            <input v-model="newUser.enabled" type="checkbox" class="rounded border-gray-300 dark:border-gray-600">
+            <span class="text-sm text-gray-700 font-medium dark:text-gray-300">创建后立即启用</span>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <BaseButton variant="secondary" @click="showCreateUserModal = false">取消</BaseButton>
+          <BaseButton variant="primary" @click="createUser">创建</BaseButton>
         </div>
       </div>
     </div>

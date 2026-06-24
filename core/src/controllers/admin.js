@@ -2498,7 +2498,19 @@ function startAdminServer(dataProvider) {
         }
     });
 
-    // 更新用户
+    // 管理员创建用户（不需要卡密）
+    app.post('/api/admin/users/create', authRequired, adminRequired, (req, res) => {
+        try {
+            const { username, password, days, quota, enabled } = req.body || {};
+            const result = userStore.adminCreateUser(username, password, { days, quota, enabled });
+            if (!result.ok) return res.status(400).json(result);
+            res.json({ ok: true, data: result.user });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 更新用户（同步更新 tokenUserMap 确保用户端即时刷新）
     app.post('/api/admin/users/:username', authRequired, adminRequired, (req, res) => {
         try {
             const { username } = req.params;
@@ -2506,6 +2518,23 @@ function startAdminServer(dataProvider) {
             const user = userStore.updateUser(username, updates);
             if (!user) {
                 return res.status(404).json({ ok: false, error: '用户不存在' });
+            }
+            // 更新 tokenUserMap 中的缓存数据
+            for (const [token, u] of tokenUserMap.entries()) {
+                if (u.username === username) {
+                    const fresh = userStore.getAllUsers().find(x => x.username === username);
+                    tokenUserMap.set(token, fresh || u);
+                    // 如果被禁用或过期，强制下线
+                    if (updates.enabled === false || (updates.expiresAt && updates.expiresAt < Date.now())) {
+                        tokens.delete(token);
+                        tokenUserMap.delete(token);
+                        if (io) {
+                            for (const socket of io.sockets.sockets.values()) {
+                                if (String(socket.data.adminToken || '') === String(token)) socket.disconnect(true);
+                            }
+                        }
+                    }
+                }
             }
             res.json({ ok: true, data: user });
         } catch (e) {
@@ -2566,6 +2595,33 @@ function startAdminServer(dataProvider) {
 
             const message = result.cardType === 'days' ? '续费成功' : '配额增加成功';
             res.json({ ok: true, data: result.card, cardType: result.cardType, message });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 管理员重置用户密码
+    app.post('/api/admin/users/:username/reset-password', authRequired, adminRequired, (req, res) => {
+        try {
+            const { username } = req.params;
+            const { newPassword } = req.body || {};
+            if (!newPassword || String(newPassword).length < 4) {
+                return res.status(400).json({ ok: false, error: '新密码至少4个字符' });
+            }
+            const result = userStore.adminSetPassword(username, newPassword);
+            if (!result.ok) return res.status(400).json(result);
+            for (const [token, u] of tokenUserMap.entries()) {
+                if (u.username === username) {
+                    tokens.delete(token);
+                    tokenUserMap.delete(token);
+                    if (io) {
+                        for (const socket of io.sockets.sockets.values()) {
+                            if (String(socket.data.adminToken || '') === String(token)) socket.disconnect(true);
+                        }
+                    }
+                }
+            }
+            res.json(result);
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }
