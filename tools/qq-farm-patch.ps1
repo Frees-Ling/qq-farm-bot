@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     QQ农场 - PC一键全栈配置工具
 .DESCRIPTION
