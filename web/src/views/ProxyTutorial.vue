@@ -10,7 +10,7 @@ const step = ref(0)
 const windowsIp = ref('')
 async function getLocalIp() {
   try {
-    const res = await fetch('/api/ping')
+    await fetch('/api/ping')
     // Use window.location.hostname as fallback
     windowsIp.value = window.location.hostname
   } catch {
@@ -50,9 +50,10 @@ function prevStep() {
   if (step.value > 0) step.value--
 }
 
-function resetSteps() {
-  step.value = 0
-}
+// resetSteps unused, kept for potential future use
+// function resetSteps() {
+//   step.value = 0
+// }
 </script>
 
 <template>

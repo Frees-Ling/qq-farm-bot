@@ -73,11 +73,9 @@ async function fetchSystemInfo() {
 const realtimeLogs = ref<any[]>([])
 const realtimeConnected = ref(false)
 
-// 为实时日志尝试连接Socket.IO
-function connectRealtime() {
-  // SystemLogs页面使用短轮询作为备选
+// 实时日志使用短轮询（备选方案）
+function initRealtime() {
   realtimeConnected.value = false
-  // 用短轮询模拟实时
   const interval = setInterval(async () => {
     if (activeTab.value !== 'realtime') return
     try {

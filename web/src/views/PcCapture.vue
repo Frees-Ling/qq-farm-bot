@@ -22,7 +22,6 @@ const isLoadingInfo = ref(true)
 const infoError = ref('')
 const isRemote = ref(false)
 const copiedWsUrl = ref(false)
-const copiedCommand = ref(false)
 
 // 操作系统检测
 const platform = computed(() => {
@@ -81,7 +80,7 @@ async function checkForNewAccount() {
     await accountStore.fetchAccounts()
     const current = accountStore.accounts.length
     if (current > knownCount.value) {
-      const newAccts = accountStore.accounts.filter(a => !a.deletedAt)
+      const newAccts = accountStore.accounts.filter((a: any) => !a.deletedAt)
       const likely = newAccts[0]
       if (likely) {
         capturedAccount.value = likely
@@ -117,15 +116,6 @@ async function handleCopyWsUrl() {
   if (ok) {
     copiedWsUrl.value = true
     setTimeout(() => { copiedWsUrl.value = false }, 2000)
-  }
-}
-
-async function handleCopyCommand() {
-  if (!connectionInfo.value?.patchCommand) return
-  const ok = await copyTextToClipboard(connectionInfo.value.patchCommand)
-  if (ok) {
-    copiedCommand.value = true
-    setTimeout(() => { copiedCommand.value = false }, 2000)
   }
 }
 
