@@ -860,6 +860,19 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // 管理员编辑公告
+    app.put('/api/announcement/:id', authRequired, (req, res) => {
+        try {
+            if (req.currentUser.role !== 'admin') return res.status(403).json({ ok: false, error: '仅管理员可编辑公告' });
+            const { title, content } = req.body || {};
+            const result = store.updateAnnouncement ? store.updateAnnouncement(req.params.id, title, content) : { ok: false, error: '公告系统不可用' };
+            if (!result.ok) return res.status(404).json(result);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     // 管理员删除公告
     app.delete("/api/announcement/:id", authRequired, (req, res) => {
         try {

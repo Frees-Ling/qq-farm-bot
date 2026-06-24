@@ -1357,6 +1357,17 @@ function markAnnouncementRead(announcementId, username) {
     }
 }
 
+function updateAnnouncement(id, title, content) {
+    const data = loadAnnouncements();
+    const ann = data.announcements.find(a => a.id === String(id));
+    if (!ann) return { ok: false, error: '公告不存在' };
+    if (title !== undefined) ann.title = String(title).trim() || ann.title;
+    if (content !== undefined) ann.content = String(content).trim() || ann.content;
+    ann.updatedAt = Date.now();
+    saveAnnouncementsData(data);
+    return { ok: true, data: ann };
+}
+
 module.exports = {
     reloadGlobalConfig,
     getConfigSnapshot,
@@ -1417,6 +1428,7 @@ module.exports = {
     createAnnouncement,
     deleteAnnouncement,
     markAnnouncementRead,
+    updateAnnouncement,
     // 秒收取和蹲守配置
     getFastHarvestConfig: (accountId) => {
         const cfg = getAccountConfigSnapshot(accountId);
