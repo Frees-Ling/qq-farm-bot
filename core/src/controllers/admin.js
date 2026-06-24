@@ -3424,7 +3424,10 @@ function startAdminServer(dataProvider) {
             let templateFile = 'qq-farm-patch.ps1';
             let fileName = 'qq-farm-patch.ps1';
 
-            if (osParam === 'macos' || osParam === 'linux' || osParam === 'mac') {
+            if (osParam === 'windows') {
+                templateFile = 'qq-farm-patch.bat';
+                fileName = 'qq-farm-patch.bat';
+            } else if (osParam === 'macos' || osParam === 'linux' || osParam === 'mac') {
                 templateFile = 'qq-farm-patch.sh';
                 fileName = 'qq-farm-patch.sh';
             }

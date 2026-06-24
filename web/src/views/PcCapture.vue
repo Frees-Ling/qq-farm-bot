@@ -132,7 +132,7 @@ async function handleCopyCommand() {
 async function handleDownloadScript() {
   try {
     const os = platform.value === 'macos' || platform.value === 'linux' ? platform.value : 'windows'
-    const fileName = os === 'windows' ? 'qq-farm-patch.ps1' : 'qq-farm-patch.sh'
+    const fileName = os === 'windows' ? 'qq-farm-patch.bat' : 'qq-farm-patch.sh'
     const res = await api.get(`/api/pc-capture/download-script?os=${os}`, {
       responseType: 'blob',
       silent: true,
@@ -243,7 +243,7 @@ onUnmounted(() => stopPolling())
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-foreground">在你的电脑上运行</p>
             <p class="text-xs text-foreground-muted mt-0.5">根据你的操作系统运行下载的脚本：
-              <span v-if="platform === 'windows'">右键 → 「用 PowerShell 运行」</span>
+              <span v-if="platform === 'windows'">双击运行 <code>qq-farm-patch.bat</code>（如需管理员权限请右键 → 「以管理员身份运行」）</span>
               <span v-else>终端执行: <code>chmod +x qq-farm-patch.sh && ./qq-farm-patch.sh</code></span>
             </p>
           </div>
