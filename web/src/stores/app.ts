@@ -7,7 +7,7 @@ const THEME_KEY = 'ui_theme'
 export type Theme = 'light-blue' | 'light-green' | 'light-pink' | 'dark-blue' | 'dark-purple' | 'dark-teal' | 'dark-orange' | 'dark-red'
 
 export const useAppStore = defineStore('app', () => {
-  const currentTheme = ref<Theme>((localStorage.getItem(THEME_KEY) as Theme) || 'light-pink')
+  const currentTheme = ref<Theme>((localStorage.getItem(THEME_KEY) as Theme) || 'dark-blue')
   const showThemePanel = ref(false)
 
   const themes: Record<Theme, {

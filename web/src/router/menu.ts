@@ -89,6 +89,7 @@ export const menuRoutes: MenuItem[] = [
     label: '系统日志',
     icon: 'i-carbon-document',
     component: () => import('@/views/SystemLogs.vue'),
+    adminOnly: true,
   },
   {
     path: 'admin',

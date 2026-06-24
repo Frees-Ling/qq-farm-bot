@@ -729,6 +729,12 @@ function startAdminServer(dataProvider) {
 
     app.get('/api/system-logs', (req, res) => {
         try {
+            // 仅管理员可查看系统日志
+            const user = req.currentUser;
+            if (!user || user.role !== 'admin') {
+                return res.status(403).json({ ok: false, error: '仅管理员可查看系统日志' });
+            }
+
             const lines = Number(req.query.lines) || 200;
             const keyword = String(req.query.keyword || '').trim().toLowerCase();
             let data = [];
