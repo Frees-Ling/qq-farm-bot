@@ -769,7 +769,7 @@ function startAdminServer(dataProvider) {
 
     app.use('/api', (req, res, next) => {
         if (req.path === '/pending-code') return next(); // 公开
-        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available' || req.path === '/pc-capture/info' || req.path === '/pc-capture/download-patch') return next();
+        if (req.path === '/login' || req.path === '/register' || req.path === '/announcement' || req.path === '/ping' || req.path === '/qr/create' || req.path === '/qr/check' || req.path === '/qr/auth-code' || req.path === '/code-capture' || req.path === '/proxy' || req.path === '/oauth/login' || req.path === '/oauth/callback' || req.path === '/oauth/qr-create' || req.path === '/oauth/qr-status' || req.path === '/admin/oauth' || req.path === '/wx-qr/create' || req.path === '/wx-qr/check' || req.path === '/wx-qr/reset' || req.path === '/capture-proxy/info' || req.path === '/capture-proxy/cert' || req.path === '/nodes/available' || req.path === '/pc-capture/info' || req.path === '/pc-capture/download-patch' || req.path === '/pc-capture/download-ps1') return next();
         return authRequired(req, res, next);
     });
 
@@ -3053,6 +3053,263 @@ function startAdminServer(dataProvider) {
             res.json({ ok: true, data });
         } catch (e) {
             handleApiError(res, e);
+        }
+    });
+
+    // ============ 聚合日志 API（管理员专用） ============
+
+    // 管理员权限中间件（基于 authRequired 之上）
+    const adminRequired = (req, res, next) => {
+        if (!req.currentUser || req.currentUser.role !== 'admin') {
+            return res.status(403).json({ ok: false, error: '需要管理员权限' });
+        }
+        next();
+    };
+
+    // 聚合所有日志来源
+    app.get('/api/logs/all', adminRequired, (req, res) => {
+        try {
+            const source = String(req.query.source || 'all').trim();
+            const keyword = String(req.query.keyword || '').trim().toLowerCase();
+            const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+            const severity = String(req.query.severity || '').trim();
+
+            let lines = [];
+
+            // 运行时日志 (globalLogs)
+            if (source === 'all' || source === 'global') {
+                const opts = { keyword, limit: 1000 };
+                if (severity === 'error') opts.isWarn = '1';
+                const entries = provider.getLogs('all', opts) || [];
+                for (const e of entries) {
+                    const line = `[${e.time}] [${e.tag}] ${e.msg}`;
+                    lines.push({ text: line, time: e.time, tag: e.tag, source: 'runtime', level: e.isWarn ? 'error' : 'info' });
+                }
+            }
+
+            // 账户操作日志 (accountLogs)
+            if (source === 'all' || source === 'account') {
+                const accEntries = provider.getAccountLogs ? provider.getAccountLogs(300) : [];
+                for (const e of accEntries) {
+                    const line = `[${e.time}] [${e.action}] ${e.msg}`;
+                    if (keyword && !line.toLowerCase().includes(keyword)) continue;
+                    lines.push({ text: line, time: e.time, tag: e.action, source: 'account', level: e.action === 'kickout_stop' || e.action === 'ws_400' ? 'error' : 'info' });
+                }
+            }
+
+            // 系统捕获日志 (capture-system.log)
+            if (source === 'all' || source === 'capture') {
+                try {
+                    if (fs.existsSync(CAPTURE_LOG_FILE)) {
+                        const content = fs.readFileSync(CAPTURE_LOG_FILE, 'utf8');
+                        const fileLines = content.split('\n').filter(Boolean);
+                        for (const line of fileLines) {
+                            if (keyword && !line.toLowerCase().includes(keyword)) continue;
+                            const level = line.includes('异常') || line.includes('失败') ? 'error' : line.includes('认领成功') || line.includes('forwarded') ? 'success' : 'info';
+                            const time = line.match(/\[([^\]]+)\]/)?.[1] || '';
+                            lines.push({ text: line, time, source: 'capture', level });
+                        }
+                    }
+                } catch {}
+            }
+
+            // 仅错误
+            if (severity === 'error') {
+                lines = lines.filter(l => l.level === 'error');
+            }
+
+            // 按时间排序（最新在前）
+            lines.sort((a, b) => (b.time || '').localeCompare(a.time || '') || 0);
+
+            res.json({ ok: true, data: { lines: lines.slice(0, limit), total: lines.length } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 下载日志
+    app.get('/api/logs/download', adminRequired, (req, res) => {
+        try {
+            const format = String(req.query.format || 'txt').trim();
+            const source = String(req.query.source || 'all').trim();
+
+            // 复用聚合接口获取数据
+            const mockReq = { query: { ...req.query, limit: '5000' }, currentUser: req.currentUser };
+            let lines = [];
+            const CAPTURE_FILE = getDataFile('capture-system.log');
+
+            if (source === 'all' || source === 'capture') {
+                try {
+                    if (fs.existsSync(CAPTURE_FILE)) {
+                        const content = fs.readFileSync(CAPTURE_FILE, 'utf8');
+                        for (const line of content.split('\n').filter(Boolean)) {
+                            lines.push(line);
+                        }
+                    }
+                } catch {}
+            }
+            if (source === 'all' || source === 'global') {
+                const entries = provider.getLogs('all', { limit: 1000 });
+                for (const e of entries) {
+                    lines.push(`[${e.time}] [${e.tag}] ${e.msg}${e.isWarn ? ' [WARN]' : ''}`);
+                }
+            }
+            if (source === 'all' || source === 'account') {
+                const accEntries = provider.getAccountLogs ? provider.getAccountLogs(300) : [];
+                for (const e of accEntries) {
+                    lines.push(`[${e.time}] [${e.action}] ${e.msg}`);
+                }
+            }
+
+            lines.sort().reverse();
+
+            if (format === 'json') {
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Content-Disposition', `attachment; filename="qq-farm-logs-${new Date().toISOString().slice(0, 10)}.json"`);
+                return res.json({ ok: true, data: { lines, count: lines.length, exportedAt: new Date().toISOString() } });
+            }
+
+            const content = lines.join('\n');
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="qq-farm-logs-${new Date().toISOString().slice(0, 10)}.txt"`);
+            res.send(content);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 服务器运行信息
+    app.get('/api/system/info', adminRequired, (req, res) => {
+        try {
+            const execSync = require('child_process').execSync;
+            let cpuLoad = 'N/A';
+            let memoryInfo = { total: 'N/A', used: 'N/A', percent: 'N/A' };
+            let uptimeDays = 0;
+            let nodeVersion = process.version;
+            let pid = process.pid;
+
+            try {
+                const load = execSync('cat /proc/loadavg 2>/dev/null | cut -d" " -f1-3 || true', { timeout: 3000 }).toString().trim();
+                if (load) cpuLoad = load;
+            } catch {}
+
+            try {
+                const mem = execSync('free -m 2>/dev/null | grep Mem || true', { timeout: 3000 }).toString().trim().split(/\s+/);
+                if (mem.length >= 3) {
+                    memoryInfo = { total: mem[1] + 'MB', used: mem[2] + 'MB', percent: Math.round(parseInt(mem[2]) / parseInt(mem[1]) * 100) + '%' };
+                }
+            } catch {}
+
+            try {
+                uptimeDays = Math.floor(process.uptime() / 86400);
+            } catch {}
+
+            // 工作者和账户统计
+            const accounts = typeof store.getAccounts === 'function' ? store.getAccounts() : { accounts: [] };
+            const allAccounts = Array.isArray(accounts.accounts) ? accounts.accounts : [];
+            const workerCount = provider.getWorkerCount ? provider.getWorkerCount() : 0;
+
+            // sniff状态
+            let sniffRunning = false;
+            try {
+                const health = execSync('curl -s --max-time 2 http://127.0.0.1:9988/health 2>/dev/null || true', { timeout: 3000 }).toString().trim();
+                sniffRunning = health === 'ok';
+            } catch {}
+            if (!sniffRunning) {
+                try {
+                    const listening = execSync('ss -tlnp 2>/dev/null | grep -q ":9988 " && echo 1 || echo 0', { timeout: 3000 }).toString().trim();
+                    sniffRunning = listening === '1';
+                } catch {}
+            }
+
+            res.json({
+                ok: true,
+                data: {
+                    uptime: process.uptime(),
+                    uptimeDays,
+                    nodeVersion,
+                    pid,
+                    cpuLoad,
+                    memory: memoryInfo,
+                    workerCount,
+                    totalAccounts: allAccounts.length,
+                    sniffRunning,
+                    snapshot: {
+                        globalLogsCount: provider.getLogs ? provider.getLogs('all', { limit: 10000 }).length : 0,
+                        captureLogFile: fs.existsSync(getDataFile('capture-system.log')) ? (fs.statSync(getDataFile('capture-system.log')).size || 0) : 0,
+                    },
+                },
+            });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 一键 PowerShell 配置脚本下载
+    app.get('/api/pc-capture/download-ps1', (req, res) => {
+        try {
+            // 获取公网IP（复用pc-capture/info逻辑）
+            let publicIp = process.env.FARM_PUBLIC_IP || '';
+            if (!publicIp) {
+                try {
+                    const execSync = require('child_process').execSync;
+                    publicIp = execSync('curl -s --max-time 5 ifconfig.me 2>/dev/null || curl -s --max-time 5 ip.sb 2>/dev/null || true', { timeout: 8000 }).toString().trim();
+                } catch {}
+            }
+            if (!publicIp) publicIp = 'SERVER_IP';
+
+            const sniffPort = Number(process.env.FARM_CAPTURE_PORT) || 9988;
+            const wsUrl = `ws://${publicIp}:${sniffPort}/admin`;
+
+            const script = `@echo off
+chcp 65001 >nul
+echo ====================================
+echo  QQ农场 - PC一键补丁配置工具
+echo ====================================
+echo.
+
+:: 检测 Node.js
+where node >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [错误] 未检测到 Node.js 环境
+    echo 请先安装 Node.js: https://nodejs.org/
+    pause
+    exit /b 1
+)
+
+echo [1/3] 下载补丁脚本...
+powershell -Command "Invoke-WebRequest -Uri 'http://${publicIp}:3000/api/pc-capture/download-patch' -OutFile 'patch-qq-farm-code-capture.js'" 2>nul
+if not exist patch-qq-farm-code-capture.js (
+    echo [错误] 下载失败，请检查网络连接
+    pause
+    exit /b 1
+)
+
+echo [2/3] 运行补丁...
+node patch-qq-farm-code-capture.js --capture-ws "${wsUrl}"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [提示] 如果未找到游戏缓存，请先打开一次QQ经典农场
+    echo        然后重新运行本脚本
+    pause
+    exit /b %ERRORLEVEL%
+)
+
+echo.
+echo [3/3] 补丁安装完成！
+echo.
+echo 请打开PC QQ上的QQ经典农场
+echo Code 将自动被捕获并发送到服务器
+echo.
+echo 如需要重新打补丁，再次运行本脚本即可
+pause
+`;
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', 'attachment; filename="qq-farm-patch.bat"');
+            res.send(script);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
         }
     });
 

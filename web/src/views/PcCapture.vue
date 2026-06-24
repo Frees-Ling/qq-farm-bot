@@ -135,6 +135,26 @@ async function handleDownloadScript() {
   }
 }
 
+async function handleDownloadPs1() {
+  try {
+    const res = await api.get('/api/pc-capture/download-ps1', {
+      responseType: 'blob',
+      silent: true,
+    })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'qq-farm-patch.bat')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    toast.success('一键配置脚本已下载，双击运行即可')
+  } catch (e: any) {
+    toast.error('下载失败: ' + (e?.message || '未知错误'))
+  }
+}
+
 onUnmounted(() => stopPolling())
 </script>
 
@@ -214,10 +234,10 @@ onUnmounted(() => stopPolling())
         <div class="flex items-start gap-3">
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">1</span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-foreground">下载补丁脚本</p>
-            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上</p>
-            <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadScript">
-              ⬇️ 下载 patch-qq-farm-code-capture.js
+            <p class="text-sm font-medium text-foreground">下载一键配置脚本</p>
+            <p class="text-xs text-foreground-muted mt-0.5">保存到你的电脑上，双击运行即可自动完成补丁注入</p>
+            <BaseButton variant="primary" size="sm" class="mt-2" @click="handleDownloadPs1">
+              ⬇️ 下载一键配置脚本 (qq-farm-patch.bat)
             </BaseButton>
           </div>
         </div>
@@ -225,14 +245,8 @@ onUnmounted(() => stopPolling())
         <div class="flex items-start gap-3">
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">2</span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-foreground">在你的电脑上运行补丁</p>
-            <p class="text-xs text-foreground-muted mt-0.5">打开终端(Cmd/PowerShell)，进入脚本所在目录，执行以下命令:</p>
-            <div class="mt-2 flex items-center gap-2">
-              <code class="flex-1 rounded bg-gray-100 p-2 text-xs font-mono break-all dark:bg-gray-800">{{ connectionInfo.patchCommand }}</code>
-              <button class="shrink-0 text-xs px-3 py-2 rounded transition-colors" :class="copiedCommand ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'" @click="handleCopyCommand">
-                {{ copiedCommand ? '已复制!' : '复制' }}
-              </button>
-            </div>
+            <p class="text-sm font-medium text-foreground">在你的电脑上运行</p>
+            <p class="text-xs text-foreground-muted mt-0.5">右键点击下载的 <code>qq-farm-patch.bat</code> → 「以管理员身份运行」。脚本会自动检测Node.js、下载补丁并注入。</p>
           </div>
         </div>
 

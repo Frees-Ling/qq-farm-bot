@@ -52,7 +52,7 @@ const addAccountDisabledReason = computed(() => {
 const bottomNavItems = computed(() => {
   const mobileMenuPaths = ['', 'personal', 'friends', 'analytics', 'settings']
   const allowPaths = userStore.isAdmin
-    ? [...mobileMenuPaths, 'admin']
+    ? [...mobileMenuPaths, 'admin', 'logs']
     : mobileMenuPaths
   return menuRoutes
     .filter(item => allowPaths.includes(item.path) && (!item.adminOnly || userStore.isAdmin))
