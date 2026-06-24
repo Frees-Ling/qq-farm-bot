@@ -3058,14 +3058,6 @@ function startAdminServer(dataProvider) {
 
     // ============ 聚合日志 API（管理员专用） ============
 
-    // 管理员权限中间件（基于 authRequired 之上）
-    const adminRequired = (req, res, next) => {
-        if (!req.currentUser || req.currentUser.role !== 'admin') {
-            return res.status(403).json({ ok: false, error: '需要管理员权限' });
-        }
-        next();
-    };
-
     // 聚合所有日志来源
     app.get('/api/logs/all', adminRequired, (req, res) => {
         try {
