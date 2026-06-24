@@ -247,8 +247,10 @@ while (`$true) { Start-Sleep -Seconds 10 }
         & powershell -NoProfile -File $watchFile
     }
 
-    pause
+    Write-Host "按任意键退出..." -ForegroundColor Gray
+    pause | Out-Null
 } catch {
     Write-Host ""; Write-Step "脚本执行出错: $_" -Status "err"
-    pause; exit 1
+    Write-Host "按任意键退出..." -ForegroundColor Gray
+    pause | Out-Null; exit 1
 }

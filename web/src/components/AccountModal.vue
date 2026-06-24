@@ -25,7 +25,7 @@ const wxLoginStore = useWxLoginStore()
 const qqLoginStore = useQqLoginStore()
 const accountStore = useAccountStore()
 
-// 标签页：manual-手动填码, wx-微信扫码, qq-QQ扫码, wx-config-微信配置
+// 标签页：manual-手动填码, wx-微信扫码, qq-PC监听, wx-config-微信配置
 const pcFarmWaiting = ref(false)
 const pcFarmFound = ref(false)
 const knownAccountCount = ref(0)
@@ -410,7 +410,7 @@ watch(activeTab, (tab) => {
             }"
             @click="activeTab = 'pc'"
           >
-            QQ扫码
+            PC监听
           </button>
           <button
             v-if="adminWxConfig.showWxConfigTab"
@@ -505,9 +505,14 @@ watch(activeTab, (tab) => {
             <div class="i-carbon-audio-spectrum text-5xl text-foreground-muted" />
             <p class="text-lg font-medium text-foreground">PC QQ 监听捕获</p>
             <p class="text-sm text-foreground-muted text-center max-w-sm">
-              QQ经典农场的 game.js 已注入补丁<br/>
+              通过PC QQ上的补丁自动捕获登录Code<br/>
               点击「开始监听」后打开PC QQ上的农场即可自动捕获Code
             </p>
+            <div class="w-full rounded-lg border border-amber-200/60 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-200">
+              <p class="font-medium mb-1">⚠️ 尚未配置补丁？</p>
+              <p class="mb-1">如果未配置PC补丁，请先前往使用教程配置:</p>
+              <a href="/tutorial" target="_blank" class="text-blue-600 underline hover:text-blue-800 dark:text-blue-400">📖 查看PC监听配置教程 →</a>
+            </div>
             <div class="w-full rounded-lg border border-blue-200/60 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-700/40 dark:bg-blue-900/20 dark:text-blue-200">
               <p class="font-medium mb-1">📋 操作步骤</p>
               <ol class="list-decimal pl-4 space-y-0.5">
