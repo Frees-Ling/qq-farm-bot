@@ -131,26 +131,6 @@ async function handleCopyCommand() {
 
 async function handleDownloadScript() {
   try {
-    const res = await api.get('/api/pc-capture/download-patch', {
-      responseType: 'blob',
-      silent: true,
-    })
-    const url = window.URL.createObjectURL(new Blob([res.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', 'patch-qq-farm-code-capture.js')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    toast.success('补丁脚本已下载')
-  } catch (e: any) {
-    toast.error('下载失败: ' + (e?.message || '未知错误'))
-  }
-}
-
-async function handleDownloadScript() {
-  try {
     const os = platform.value === 'macos' || platform.value === 'linux' ? platform.value : 'windows'
     const fileName = os === 'windows' ? 'qq-farm-patch.ps1' : 'qq-farm-patch.sh'
     const res = await api.get(`/api/pc-capture/download-script?os=${os}`, {

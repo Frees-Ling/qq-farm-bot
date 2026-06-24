@@ -850,6 +850,7 @@ onMounted(() => {
           <BaseButton variant="primary" size="sm" @click="showCreateUserModal = true">创建用户</BaseButton>
           <BaseButton variant="outline" size="sm" @click="fetchUsers">刷新</BaseButton>
         </div>
+      </div>
 
       <!-- 用户列表 -->
       <div class="overflow-hidden rounded-lg bg-white shadow dark:bg-gray-800">
