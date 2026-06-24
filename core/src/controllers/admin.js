@@ -825,7 +825,11 @@ function startAdminServer(dataProvider) {
     // 管理员发布公告
     app.post('/api/announcement', (req, res) => {
         try {
+            console.log('[announcement] POST currentUser:', JSON.stringify({ username: req.currentUser?.username, role: req.currentUser?.role }));
             if (!req.currentUser || req.currentUser.role !== 'admin') {
+                console.log('[announcement] 403 - role:', req.currentUser?.role, 'user:', req.currentUser?.username);
+                return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
+            }
                 return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
             }
             const { title, content } = req.body || {};
