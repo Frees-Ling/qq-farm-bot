@@ -103,7 +103,7 @@ async function loadWxQRCode() {
   }
 }
 
-const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
+const { pause: stopQqCheck } = useIntervalFn(async () => {
   if (!['ready', 'scanning', 'confirming'].includes(qqLoginStore.status))
     return
 
@@ -131,7 +131,7 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
       qqLoginStore.resetState()
       // 切换到PC QQ等待模式
       pendingUin.value = codeResult.uin
-      pendingNickname.value = codeResult.nickname || `QQ${codeResult.uin}`
+      pendingNickname.value = (codeResult as any).nickname || `QQ${codeResult.uin}`
       knownAccountCount.value = 0
       // 获取当前账号数作为基准
       accountStore.fetchAccounts().then(() => {
@@ -145,7 +145,7 @@ const { pause: stopQqCheck, resume: startQqCheck } = useIntervalFn(async () => {
   }
 }, 2000, { immediate: false })
 
-const { pause: stopQqCaptureCheck, resume: startQqCaptureCheck } = useIntervalFn(async () => {
+const { pause: stopQqCaptureCheck } = useIntervalFn(async () => {
   const result = await qqLoginStore.checkPhoneCapture()
   if (result.success) {
     stopQqCaptureCheck()
@@ -252,15 +252,7 @@ const wxQrImageSrc = computed(() => {
   return `data:image/png;base64,${wxLoginStore.qrCode}`
 })
 
-const qqQrImageSrc = computed(() => {
-  if (!qqLoginStore.qrCode)
-    return ''
-  if (qqLoginStore.qrCode.startsWith('data:'))
-    return qqLoginStore.qrCode
-  if (qqLoginStore.qrCode.startsWith('http'))
-    return qqLoginStore.qrCode
-  return `data:image/png;base64,${qqLoginStore.qrCode}`
-})
+// qqQrImageSrc was removed (unused)
 
 // PC QQ等待模式 - 轮询检测账号是否被自动创建
 const { pause: stopPcFarmCheck, resume: startPcFarmCheck } = useIntervalFn(async () => {

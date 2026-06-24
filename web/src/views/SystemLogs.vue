@@ -73,22 +73,6 @@ async function fetchSystemInfo() {
 const realtimeLogs = ref<any[]>([])
 const realtimeConnected = ref(false)
 
-// 实时日志使用短轮询（备选方案）
-function initRealtime() {
-  realtimeConnected.value = false
-  const interval = setInterval(async () => {
-    if (activeTab.value !== 'realtime') return
-    try {
-      const res = await api.get('/api/logs/all', { params: { source: 'all', limit: 50 }, silent: true } as any)
-      if (res.data?.ok) {
-        realtimeLogs.value = res.data.data.lines || []
-        realtimeConnected.value = true
-      }
-    } catch {}
-  }, 3000)
-  return interval
-}
-
 // ============ 下载 ============
 async function handleDownload(format: string) {
   try {
