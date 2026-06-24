@@ -17,50 +17,14 @@ const inviteCode = ref('')
 const error = ref('')
 const success = ref('')
 const loading = ref(false)
-const oauthLoading = ref(false)
-const oauthEnabled = ref(false)
 
 onMounted(async () => {
-  const oauthToken = route.query.oauth_token as string
-  const oauthUser = route.query.oauth_user as string
   const errorParam = route.query.error as string
 
   if (errorParam) {
     error.value = decodeURIComponent(errorParam)
     window.history.replaceState({}, '', '/login')
     return
-  }
-
-  if (oauthToken && oauthUser) {
-    try {
-      loading.value = true
-      const res = await api.post('/api/oauth/token-login', { token: oauthToken }, { silent: true })
-      if (res.data.ok) {
-        userStore.token = res.data.data.token
-        userStore.userInfo = res.data.data.user
-        router.push('/')
-      }
-      else {
-        error.value = res.data.error || 'OAuth登录失败'
-      }
-    }
-    catch (e: any) {
-      error.value = e.response?.data?.error || e.message || 'OAuth登录异常'
-    }
-    finally {
-      loading.value = false
-      window.history.replaceState({}, '', '/login')
-    }
-  }
-
-  try {
-    const res = await api.get('/api/admin/oauth', { silent: true })
-    if (res.data.ok) {
-      oauthEnabled.value = res.data.data.enabled
-    }
-  }
-  catch {
-    // ignore
   }
 })
 
@@ -117,26 +81,6 @@ function toggleMode() {
   isLogin.value = !isLogin.value
   error.value = ''
   success.value = ''
-}
-
-async function handleOAuthLogin(type: string) {
-  oauthLoading.value = true
-  error.value = ''
-
-  try {
-    const res = await api.post('/api/oauth/login', { type }, { silent: true })
-    if (res.data.ok && res.data.data.url) {
-      window.location.href = res.data.data.url
-    }
-    else {
-      error.value = res.data.error || '获取登录链接失败'
-      oauthLoading.value = false
-    }
-  }
-  catch (e: any) {
-    error.value = e.response?.data?.error || e.message || 'OAuth登录异常'
-    oauthLoading.value = false
-  }
 }
 </script>
 
@@ -224,28 +168,6 @@ async function handleOAuthLogin(type: string) {
         </button>
       </div>
 
-      <div v-if="isLogin && oauthEnabled" class="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
-        <div class="mb-4 text-center">
-          <span class="text-sm" :style="{ color: 'var(--theme-text)' }">其他登录方式</span>
-        </div>
-        <div class="flex justify-center gap-4">
-          <button
-            type="button"
-            class="h-12 w-12 flex items-center justify-center rounded-full bg-blue-500 text-white transition-colors hover:bg-blue-600"
-            :disabled="oauthLoading"
-            title="QQ登录"
-            @click="handleOAuthLogin('qq')"
-          >
-            <svg v-if="!oauthLoading" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 13.19c-.18.61-.83 1.17-1.46 1.25-.56.07-1.12.14-2.18.14-1.06 0-1.62-.07-2.18-.14-.63-.08-1.28-.64-1.46-1.25-.12-.41-.12-.85 0-1.26.18-.61.83-1.17 1.46-1.25.56-.07 1.12-.14 2.18-.14 1.06 0 1.62.07 2.18.14.63.08 1.28.64 1.46 1.25.12.41.12.85 0 1.26zm.86-4.19c-.24.79-.98 1.43-1.77 1.43h-.01c-.79 0-1.53-.64-1.77-1.43-.14-.46-.14-.95 0-1.41.24-.79.98-1.43 1.77-1.43h.01c.79 0 1.53.64 1.77 1.43.14.46.14.95 0 1.41zm-6.5 0c-.24.79-.98 1.43-1.77 1.43h-.01c-.79 0-1.53-.64-1.77-1.43-.14-.46-.14-.95 0-1.41.24-.79.98-1.43 1.77-1.43h.01c.79 0 1.53.64 1.77 1.43.14.46.14.95 0 1.41z" />
-            </svg>
-            <svg v-else class="h-6 w-6 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
