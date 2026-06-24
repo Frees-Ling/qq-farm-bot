@@ -823,32 +823,11 @@ function startAdminServer(dataProvider) {
     });
 
     // 管理员发布公告
-    app.post('/api/announcement', (req, res) => {
+    app.post('/api/announcement', authRequired, adminRequired, (req, res) => {
         try {
-            console.log('[announcement] POST currentUser:', JSON.stringify({ username: req.currentUser?.username, role: req.currentUser?.role }));
-            if (!req.currentUser || req.currentUser.role !== 'admin') {
-                console.log('[announcement] 403 - role:', req.currentUser?.role, 'user:', req.currentUser?.username);
-                return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
-            }
-                return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
-            }
             const { title, content } = req.body || {};
             const result = store.createAnnouncement ? store.createAnnouncement(title, content, req.currentUser.username) : { ok: false, error: '公告系统不可用' };
             if (!result.ok) return res.status(400).json(result);
-            res.json(result);
-        } catch (e) {
-            res.status(500).json({ ok: false, error: e.message });
-        }
-    });
-
-    // 管理员删除公告
-    app.delete('/api/announcement/:id', (req, res) => {
-        try {
-            if (!req.currentUser || req.currentUser.role !== 'admin') {
-                return res.status(403).json({ ok: false, error: '仅管理员可删除公告' });
-            }
-            const result = store.deleteAnnouncement ? store.deleteAnnouncement(req.params.id) : { ok: false, error: '公告系统不可用' };
-            if (!result.ok) return res.status(404).json(result);
             res.json(result);
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
