@@ -823,8 +823,9 @@ function startAdminServer(dataProvider) {
     });
 
     // 管理员发布公告
-    app.post('/api/announcement', authRequired, adminRequired, (req, res) => {
+    app.post('/api/announcement', authRequired, (req, res) => {
         try {
+            if (req.currentUser.role !== 'admin') return res.status(403).json({ ok: false, error: '仅管理员可发布公告' });
             const { title, content } = req.body || {};
             const result = store.createAnnouncement ? store.createAnnouncement(title, content, req.currentUser.username) : { ok: false, error: '公告系统不可用' };
             if (!result.ok) return res.status(400).json(result);
@@ -842,6 +843,30 @@ function startAdminServer(dataProvider) {
             const username = req.currentUser.username;
             const unread = data.announcements.filter(a => !a.readBy.includes(username)).length;
             res.json({ ok: true, data: { unread } });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 管理员删除公告
+    app.delete('/api/announcement/:id', authRequired, (req, res) => {
+        try {
+            if (req.currentUser.role !== 'admin') return res.status(403).json({ ok: false, error: '仅管理员可删除公告' });
+            const result = store.deleteAnnouncement ? store.deleteAnnouncement(req.params.id) : { ok: false, error: '公告系统不可用' };
+            if (!result.ok) return res.status(404).json(result);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // 管理员删除公告
+    app.delete("/api/announcement/:id", authRequired, (req, res) => {
+        try {
+            if (req.currentUser.role !== "admin") return res.status(403).json({ ok: false, error: "仅管理员可删除公告" });
+            const result = store.deleteAnnouncement ? store.deleteAnnouncement(req.params.id) : { ok: false, error: "公告系统不可用" };
+            if (!result.ok) return res.status(404).json(result);
+            res.json(result);
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }
