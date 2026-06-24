@@ -149,17 +149,23 @@ function Find-GameJs {
     Write-Step "步骤 3/4: 搜索QQ经典农场缓存..." -Status "info"
 
     $searchRoots = @(
-        "$env:APPDATA\QQEX\miniapp",
+        "$env:APPDATA\QQEX\miniapp",                          # QQEX 经典版
         "$env:LOCALAPPDATA\QQEX\miniapp",
-        "$env:USERPROFILE\.config\QQEX\miniapp",
+        "$env:APPDATA\Tencent\QQ\protobuf\miniapp",           # QQNT 新版
+        "$env:LOCALAPPDATA\QQ\QQNT\protobuf\miniapp",
+        "$env:USERPROFILE\AppData\Local\QQ\QQNT\protobuf\miniapp",
+        "$env:USERPROFILE\.config\QQEX\miniapp",              # Linux/Wine
         "$env:USERPROFILE\AppData\Local\QQ\QQEX\miniapp"
     )
 
     $found = @()
     foreach ($root in $searchRoots) {
         if (Test-Path $root) {
-            $files = Get-ChildItem -Path $root -Filter "game.js" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -like "1112386029_*" }
-            foreach ($f in $files) { $found += $f.FullName }
+            $files = Get-ChildItem -Path $root -Filter "game.js" -Recurse -ErrorAction SilentlyContinue | Where-Object {
+                $dirName = $_.Directory.Name
+                $dirName -like "1112386029*"  # 兼容有无下划线后缀的目录名
+            }
+            foreach ($f in $files) { $found += $f }  # 存 FileInfo 对象，保留 LastWriteTime 属性
         }
     }
 
@@ -171,7 +177,7 @@ function Find-GameJs {
 
     $latest = $found | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     Write-Step "找到游戏缓存: $($latest.FullName)" -Status "ok"
-    return $latest.FullName
+    return $latest.FullName  # $latest 是 FileInfo，FullName 返回路径字符串
 }
 
 # ========== 步骤4：注入补丁 ==========
