@@ -86,8 +86,9 @@ function openRemarkModal(acc: any) {
 onMounted(() => {
   accountStore.fetchAccounts()
   checkConnection()
-  // 获取当前用户信息
   userStore.fetchUserInfo()
+  fetchUnread()
+  setInterval(fetchUnread, 30000)
 })
 
 onBeforeUnmount(() => {
@@ -249,8 +250,21 @@ const navItems = computed(() => {
       path: item.path ? `/${item.path}` : '/',
       label: item.label,
       icon: item.icon,
+      badge: item.path === 'messages' ? unreadCount.value : 0,
     }))
 })
+
+const unreadCount = ref(0)
+
+async function fetchUnread() {
+  try {
+    const res = await api.get('/api/announcement/unread', { silent: true } as any)
+    if (res.data?.ok) unreadCount.value = res.data.data.unread
+  } catch {}
+}
+
+// onMounted callback refreshes fetchUnread (see below)
+
 
 function selectAccount(acc: any) {
   accountStore.setCurrentAccount(acc)
@@ -564,7 +578,8 @@ async function handleRenew() {
         }"
       >
         <div class="text-xl transition-transform duration-200 group-hover:scale-110" :class="[item.icon]" />
-        <span>{{ item.label }}</span>
+        <span class="flex-1">{{ item.label }}</span>
+        <span v-if="item.badge > 0" class="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{{ item.badge > 99 ? '99+' : item.badge }}</span>
       </router-link>
     </nav>
 

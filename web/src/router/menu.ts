@@ -84,6 +84,13 @@ export const menuRoutes: MenuItem[] = [
     hidden: true,
   },
   {
+    path: 'messages',
+    name: 'messages',
+    label: '消息中心',
+    icon: 'i-carbon-notification',
+    component: () => import('@/views/MessageCenter.vue'),
+  },
+  {
     path: 'tutorial',
     name: 'tutorial',
     label: '使用教程',
