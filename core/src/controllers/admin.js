@@ -666,25 +666,76 @@ function startAdminServer(dataProvider) {
     const pendingCodes = [];
 
     /**
-     * 尝试将捕获到的 code 自动匹配到已有账号（by uin/qq）
+     * 尝试将捕获到的 code 自动匹配到已有账号
+     * 匹配策略（按优先级）：
+     *   1. 按 uin/qq 匹配（快速，但抓包脚本通常获取不到 uin）
+     *   2. 按 code 验证后获取的 gid 匹配（可靠，但需要建立 WS 连接验证）
      * 匹配成功则直接更新 code 并重启 worker，实现无缝重登录
      * @param {string} code
      * @param {string} uin
      * @param {string} platform
-     * @param {object} [pendingItem] - 可选，待认领队列条目（匹配成功后会标记为已认领）
+     * @param {object} [pendingItem] - 待认领队列条目（匹配成功后会标记为已认领）
      */
     function tryAutoApplyPendingCode(code, uin, platform, pendingItem) {
-        if (!uin || !code) return false;
+        if (!code) return false;
         const accounts = getAccountList();
-        const match = accounts.find(a =>
-            String(a.uin || a.qq || '') === String(uin) ||
-            String(a.qq || a.uin || '') === String(uin)
-        );
-        if (!match) {
-            adminLogger.info('auto-apply: 无匹配账号，保留为待认领', { uin, code: code.substring(0, 20) });
-            return false;
+
+        // 策略1: 按 uin/qq 匹配（快速路径）
+        if (uin) {
+            const match = accounts.find(a =>
+                String(a.uin || a.qq || '') === String(uin) ||
+                String(a.qq || a.uin || '') === String(uin)
+            );
+            if (match) {
+                applyCodeToAccount(match, code, uin, platform, pendingItem);
+                return true;
+            }
         }
-        // 标记为已认领（如果在待认领队列中）
+
+        // 策略2: 抓包脚本通常获取不到 uin，需要通过验证 code 获取 gid 来匹配
+        // 异步执行验证，避免阻塞 pending-code 的 HTTP 响应
+        validateCodeAndMatch(code, platform, pendingItem).catch(() => {});
+        return false;
+    }
+
+    /** 正在验证中的 code（防重复验证） */
+    const _validatingCodes = new Set();
+
+    /**
+     * 通过连接 QQ Farm 服务器验证 code，提取 gid 后匹配账号
+     * 这是最可靠的匹配方式，因为 gid 是 QQ 农场账号的唯一标识
+     */
+    async function validateCodeAndMatch(code, platform, pendingItem) {
+        if (!code || _validatingCodes.has(code)) return;
+        _validatingCodes.add(code);
+        try {
+            const { fetchProfileByCode } = require('../services/manual-login-profile');
+            const profile = await fetchProfileByCode(code, { timeoutMs: 10000, platform: platform || 'qq' });
+            if (profile && profile.gid && profile.gid > 0) {
+                const accounts = getAccountList();
+                const match = accounts.find(a => Number(a.gid) === Number(profile.gid));
+                if (match) {
+                    adminLogger.info('auto-apply(gid): 通过 gid 匹配到账号，自动应用新 Code', {
+                        accountId: match.id,
+                        accountName: match.name,
+                        gid: profile.gid,
+                    });
+                    applyCodeToAccount(match, code, profile.uin || '', platform, pendingItem);
+                } else {
+                    adminLogger.info('auto-apply(gid): 无匹配账号', { gid: profile.gid, name: profile.name });
+                }
+            }
+        } catch (e) {
+            adminLogger.info('auto-apply(gid): code 验证失败', { error: e.message, code: code.substring(0, 20) });
+        } finally {
+            _validatingCodes.delete(code);
+        }
+    }
+
+    /**
+     * 将 code 应用到已匹配的账号，更新存储并重启 worker
+     */
+    function applyCodeToAccount(match, code, uin, platform, pendingItem) {
         if (pendingItem) {
             pendingItem.claimed = true;
             pendingItem.claimedBy = 'system';
@@ -693,7 +744,7 @@ function startAdminServer(dataProvider) {
         adminLogger.info('auto-apply: 匹配到账号，自动应用新 Code', {
             accountId: match.id,
             accountName: match.name,
-            uin,
+            uin: uin || '',
         });
         // 1. 更新 accounts.json
         addOrUpdateAccount({
@@ -729,9 +780,9 @@ function startAdminServer(dataProvider) {
         console.log(`\n========================================`);
         console.log(`[auto-apply] ✅ Code 已自动应用到账号: ${match.name}`);
         console.log(`[auto-apply]    账号ID: ${match.id}`);
-        console.log(`[auto-apply]    UIN: ${uin}`);
+        console.log(`[auto-apply]    UIN: ${uin || '(未知)'}`);
+        console.log(`[auto-apply]    GID: ${match.gid || '(未知)'}`);
         console.log(`========================================\n`);
-        return true;
     }
 
     // 启动后台轮询：每10秒检查待认领 Code，自动匹配已有账号
