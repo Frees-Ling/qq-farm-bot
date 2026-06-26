@@ -25,6 +25,8 @@ let clientSeq = 1;
 let serverSeq = 0;
 const pendingCallbacks = new Map();
 let wsErrorState = { code: 0, at: 0, message: '' };
+let wsUrlFormat = 0;          // 当前使用的 URL 格式索引
+let wsUrlFormatRetries = 0;   // URL 格式重试次数
 const networkScheduler = createScheduler('network');
 
 // ============ 发送限速（避免批量操作触发服务端限流） ============
@@ -597,17 +599,41 @@ function buildWsOptions(proxyUrl) {
     return options;
 }
 
+// 尝试多种URL格式，用于应对服务器参数变更
+function buildWsUrl(code, tryFormat = 0) {
+    const base = CONFIG.serverUrl;
+    const platform = CONFIG.platform;
+    const os = CONFIG.os;
+    const ver = CONFIG.clientVersion;
+    const encodedCode = encodeURIComponent(code || '');
+    // 多种格式以应对服务器更新
+    const formats = [
+        `${base}?platform=${platform}&os=${os}&ver=${ver}&code=${encodedCode}&openID=`,
+        `${base}?platform=${platform}&os=${os}&ver=${ver}&code=${encodedCode}`,
+        `${base}?code=${encodedCode}&platform=${platform}&ver=${ver}&os=${os}`,
+        `${base}?code=${encodedCode}`,
+    ];
+    return formats[tryFormat] || formats[0];
+}
+
 function connect(code, onLoginSuccess, options = {}) {
     savedLoginCallback = onLoginSuccess;
     if (code) savedCode = code;
     if (hasOwn(options, 'proxyUrl')) savedProxyUrl = normalizeProxyUrl(options.proxyUrl);
-    const url = `${CONFIG.serverUrl}?platform=${CONFIG.platform}&os=${CONFIG.os}&ver=${CONFIG.clientVersion}&code=${savedCode}&openID=`;
+    const url = buildWsUrl(savedCode, 0);
+
+    console.log(`\n========================================`);
+    console.log(`[WS] 尝试连接服务器: ${CONFIG.serverUrl}`);
+    console.log(`[WS] platform=${CONFIG.platform} os=${CONFIG.os} ver=${CONFIG.clientVersion}`);
+    console.log(`[WS] code=${String(savedCode || '').substring(0, 30)}...`);
+    console.log(`========================================\n`);
 
     ws = new WebSocket(url, buildWsOptions(savedProxyUrl));
 
     ws.binaryType = 'arraybuffer';
 
     ws.on('open', () => {
+        console.log(`[WS] ✅ WebSocket 连接成功`);
         sendLogin(onLoginSuccess);
     });
 
@@ -617,6 +643,8 @@ function connect(code, onLoginSuccess, options = {}) {
 
     ws.on('close', (code, _reason) => {
         console.warn(`[WS] 连接关闭 (code=${code})`);
+        const reason = _reason && _reason.code ? _reason.code : (_reason ? String(_reason) : '');
+        console.warn(`[WS] 关闭原因: ${reason}`);
         cleanup(`连接关闭(code=${code})`);
         if (savedLoginCallback) {
             networkScheduler.setTimeoutTask('auto_reconnect', 5000, () => {
@@ -629,14 +657,37 @@ function connect(code, onLoginSuccess, options = {}) {
     ws.on('error', (err) => {
         const message = err && err.message ? String(err.message) : '';
         logWarn('系统', `[WS] 错误: ${message}`);
+        console.error(`[WS] ❌ 连接失败: ${message}`);
+        console.error(`[WS] 使用的URL: ${url.substring(0, 200)}...`);
         const match = message.match(/Unexpected server response:\s*(\d+)/i);
         if (match) {
-            const code = Number.parseInt(match[1], 10) || 0;
-            if (code) {
-                setWsErrorState(code, message);
-                networkEvents.emit('ws_error', { code, message });
+            const httpCode = Number.parseInt(match[1], 10) || 0;
+            console.error(`[WS] ❌ 服务器返回 HTTP ${httpCode}`);
+            // HTTP 400: 尝试不同 URL 格式（最多试4种）
+            if (httpCode === 400 && wsUrlFormat < 3) {
+                wsUrlFormat++;
+                wsUrlFormatRetries++;
+                console.log(`[WS] 🔄 尝试 URL 格式 ${wsUrlFormat + 1}/4...`);
+                if (ws) { try { ws.removeAllListeners(); ws.close(); } catch(_) {} }
+                wsUrlFormat = Math.min(wsUrlFormat, 3);
+                const newUrl = buildWsUrl(savedCode, wsUrlFormat);
+                ws = new WebSocket(newUrl, buildWsOptions(savedProxyUrl));
+                ws.binaryType = 'arraybuffer';
+                ws.on('open', () => { wsUrlFormat = 0; sendLogin(onLoginSuccess); });
+                ws.on('message', (data) => handleMessage(Buffer.isBuffer(data) ? data : Buffer.from(data)));
+                ws.on('close', (c, r) => { cleanup(`连接关闭(code=${c})`); if(savedLoginCallback) networkScheduler.setTimeoutTask('auto_reconnect',5000,()=>{log('系统','[WS] 尝试自动重连...');reconnect(null);}); });
+                ws.on('error', (e) => { logWarn('系统',`[WS] 备选URL也失败: ${e.message}`); setWsErrorState(400, e.message); networkEvents.emit('ws_error',{code:400,message:e.message}); });
+                return;
             }
+            if (httpCode) {
+                setWsErrorState(httpCode, message);
+                networkEvents.emit('ws_error', { code: httpCode, message });
+            }
+        } else {
+            setWsErrorState(0, message);
+            networkEvents.emit('ws_error', { code: 0, message });
         }
+        wsUrlFormat = 0; // 重置
     });
 }
 
