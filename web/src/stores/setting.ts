@@ -169,6 +169,11 @@ export const useSettingStore = defineStore('setting', () => {
       }
       settings.value.stakeoutFriendList = d.stakeoutFriendList || []
     }
+    catch (e) {
+      // 加载失败时保持默认值，不向上传播错误
+      // Settings 页面仍可正常渲染，用户看到的将是默认配置
+      console.error('加载设置失败，使用默认配置:', e)
+    }
     finally {
       loading.value = false
     }

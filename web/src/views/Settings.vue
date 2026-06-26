@@ -284,7 +284,12 @@ async function loadData() {
   if (currentAccountId.value) {
     await settingStore.fetchSettings(currentAccountId.value)
     syncLocalSettings()
-    await farmStore.fetchSeeds(currentAccountId.value)
+    try {
+      await farmStore.fetchSeeds(currentAccountId.value)
+    }
+    catch (e) {
+      console.error('加载种子列表失败:', e)
+    }
   }
   // 加载运行时连接配置
   await loadRuntimeConfig()
