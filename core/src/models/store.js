@@ -152,6 +152,9 @@ const globalConfig = {
         apiKey: '',
         proxyApiUrl: 'https://api.aineishe.com/api/wxnc',
     },
+    // 设备指纹（持久化，重启不变）
+    deviceFingerprint: '',
+    deviceId: '',
 };
 
 function normalizeOfflineReminder(input) {
@@ -597,6 +600,13 @@ function loadGlobalConfig() {
                     proxyApiUrl: String(data.adminWxConfig.proxyApiUrl || 'https://api.aineishe.com/api/wxnc').trim(),
                 };
             }
+n            // 加载持久化设备指纹
+            if (data.deviceFingerprint) {
+                globalConfig.deviceFingerprint = String(data.deviceFingerprint).trim();
+            }
+            if (data.deviceId) {
+                globalConfig.deviceId = String(data.deviceId).trim();
+            }
         }
     } catch (e) {
         console.error('加载配置失败:', e.message);
@@ -670,6 +680,25 @@ function setAdminPasswordHash(hash) {
     globalConfig.adminPasswordHash = String(hash || '');
     saveGlobalConfig();
     return globalConfig.adminPasswordHash;
+n// ============ 设备指纹持久化 ============
+
+function getDeviceId() {
+    return String(globalConfig.deviceId || "").trim() || DEFAULT_RUNTIME_CONFIG.deviceId;
+}
+
+function setDeviceId(id) {
+    globalConfig.deviceId = String(id || "").trim();
+    saveGlobalConfig();
+}
+
+function getDeviceFingerprint() {
+    return String(globalConfig.deviceFingerprint || "").trim();
+}
+
+function setDeviceFingerprint(fp) {
+    globalConfig.deviceFingerprint = String(fp || "").trim();
+    saveGlobalConfig();
+}
 }
 
 function reloadGlobalConfig() {
@@ -1028,7 +1057,7 @@ function normalizeRuntimeConfig(cfg) {
         osVersion: String(c.osVersion || DEFAULT_RUNTIME_CONFIG.osVersion).trim(),
         networkType: String(c.networkType || DEFAULT_RUNTIME_CONFIG.networkType).trim(),
         memory: String(c.memory || DEFAULT_RUNTIME_CONFIG.memory).trim(),
-        deviceId: String(c.deviceId || DEFAULT_RUNTIME_CONFIG.deviceId).trim(),
+        deviceId: String(c.deviceId || globalConfig.deviceId || DEFAULT_RUNTIME_CONFIG.deviceId).trim(),
     };
 }
 
@@ -1401,6 +1430,10 @@ module.exports = {
     deleteAccount,
     getAdminPasswordHash,
     setAdminPasswordHash,
+    getDeviceId,
+    setDeviceId,
+    getDeviceFingerprint,
+    setDeviceFingerprint,
     // 用户隔离支持
     getAccountsByUser,
     deleteAccountsByUser,

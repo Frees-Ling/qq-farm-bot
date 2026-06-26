@@ -185,6 +185,22 @@ function createRuntimeEngine(options = {}) {
     const shouldStartAdminServer = options.startAdminServer !== false
     const shouldAutoStartAccounts = options.autoStartAccounts !== false
 
+    // 初始化设备指纹（持久化，重启不变）
+    try {
+      const { getDeviceFingerprint, setDeviceFingerprint, getDeviceId, setDeviceId } = store;
+      const { generateDeviceFingerprint, generateDeviceId } = require('../utils/device-fingerprint');
+      if (!getDeviceFingerprint()) {
+        setDeviceFingerprint(generateDeviceFingerprint());
+        log('系统', `设备指纹已初始化`);
+      }
+      if (!getDeviceId()) {
+        setDeviceId(generateDeviceId());
+        log('系统', `设备 ID 已初始化: ${getDeviceId()}`);
+      }
+    } catch (err) {
+      log('系统', `设备指纹初始化跳过: ${err.message}`);
+    }
+
     // 初始化 PLM
     if (CONFIG.persistentLogin.enabled) {
       try {
