@@ -9,6 +9,39 @@ const { createDataProvider } = require('./data-provider')
 const { createReloginReminderService } = require('./relogin-reminder')
 const { createRuntimeState } = require('./runtime-state')
 const { createWorkerManager } = require('./worker-manager')
+const { CONFIG } = require('../config/config')
+
+// ====== 持久化登录 (PLM) ======
+let plm = null;
+async function ensurePlm() {
+  if (plm) return plm;
+  const { PersistentLoginManager } = require('../services/persistent-login');
+  const { LoginStore } = require('../services/login-store');
+  const { SessionValidator } = require('../services/session-validator');
+  const { getDataFile } = require('../config/runtime-paths');
+
+  if (!CONFIG.persistentLogin.enabled) {
+    return null;
+  }
+
+  const store_ = new LoginStore({
+    filePath: getDataFile('session-store.json'),
+    cryptoPassword: CONFIG.persistentLogin.cryptoPassword,
+    autoBackup: CONFIG.persistentLogin.autoBackup,
+    maxBackups: CONFIG.persistentLogin.maxBackups,
+  });
+
+  plm = new PersistentLoginManager({
+    store: store_,
+    validator: new SessionValidator(),
+    autoValidateOnLoad: CONFIG.persistentLogin.autoValidateOnLoad,
+    enableBackup: CONFIG.persistentLogin.autoBackup,
+  });
+
+  await plm.init();
+  log('系统', `持久化登录管理器已初始化 (加密: ${CONFIG.persistentLogin.cryptoPassword ? '已启用' : '默认密钥'})`);
+  return plm;
+}
 
 const OPERATION_KEYS = ['harvest', 'water', 'weed', 'bug', 'fertilize', 'plant', 'steal', 'helpWater', 'helpWeed', 'helpBug', 'taskClaim', 'sell', 'upgrade']
 
@@ -50,6 +83,7 @@ function createRuntimeEngine(options = {}) {
     getAccounts: store.getAccounts,
     addOrUpdateAccount: store.addOrUpdateAccount,
     resolveWorkerControls: () => workerControls,
+    getPlm: () => plm,                                // ← 注入 PLM
   })
 
   const {
@@ -72,6 +106,7 @@ function createRuntimeEngine(options = {}) {
     triggerOfflineReminder,
     addOrUpdateAccount: store.addOrUpdateAccount,
     getRuntimeConfig: store.getRuntimeConfig,
+    getPlm: () => plm,                               // ← 注入 PLM 获取函数
     onStatusSync: (accountId, status, accountName) => {
       runtimeEvents.emit('status', { accountId, status, accountName })
       if (onStatusSync) onStatusSync(accountId, status, accountName)
@@ -123,10 +158,22 @@ function createRuntimeEngine(options = {}) {
     }
   }
 
-  function startAllAccounts() {
+  async function startAllAccounts() {
     const accounts = (store.getAccounts().accounts || [])
     if (accounts.length > 0) {
       log('系统', `发现 ${accounts.length} 个账号，正在启动...`)
+
+      // 集成 PLM: 导入现有账号到加密存储
+      try {
+        const plmInstance = await ensurePlm();
+        if (plmInstance) {
+          const imported = await plmInstance.importFromAccounts(accounts);
+          if (imported > 0) log('系统', `PLM: 已导入 ${imported} 个账号到加密存储`);
+        }
+      } catch (err) {
+        log('系统', `PLM 初始化跳过: ${err.message}`);
+      }
+
       accounts.forEach(acc => startWorker(acc))
     }
     else {
@@ -138,12 +185,23 @@ function createRuntimeEngine(options = {}) {
     const shouldStartAdminServer = options.startAdminServer !== false
     const shouldAutoStartAccounts = options.autoStartAccounts !== false
 
+    // 初始化 PLM
+    if (CONFIG.persistentLogin.enabled) {
+      try {
+        await ensurePlm();
+      } catch (err) {
+        log('系统', `PLM 初始化失败: ${err.message}`);
+      }
+    }
+
     if (shouldStartAdminServer && startAdminServer) {
+      // 将 PLM 注入 dataProvider，供 admin API 路由使用
+      dataProvider.getPlm = () => plm;
       startAdminServer(dataProvider)
     }
 
     if (shouldAutoStartAccounts) {
-      startAllAccounts()
+      await startAllAccounts()
     }
   }
 
@@ -168,6 +226,9 @@ function createRuntimeEngine(options = {}) {
     callWorkerApi,
     log,
     addAccountLog,
+    // 持久化登录
+    getPlm: () => plm,
+    ensurePlm,
   }
 }
 

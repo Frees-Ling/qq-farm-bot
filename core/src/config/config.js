@@ -17,6 +17,18 @@ const CONFIG = {
     friendCheckIntervalMax: 15000,// 新逻辑：好友巡查间隔最大值(ms)
     adminPort: Number(process.env.ADMIN_PORT || 3000), // 管理面板 HTTP 端口
     adminPassword: process.env.ADMIN_PASSWORD || 'admin',
+
+    // ====== 持久化登录配置 ======
+    persistentLogin: {
+        enabled: process.env.PLM_ENABLED !== 'false',       // 全局开关
+        cryptoPassword: process.env.PLM_CRYPTO_PASSWORD      // 加密主密码（必须设置）
+            || process.env.ADMIN_PASSWORD                    // 默认使用管理员密码
+            || 'qq-farm-bot-default-key',
+        autoValidateOnLoad: process.env.PLM_AUTO_VALIDATE !== 'false', // 启动时自动验证
+        autoBackup: process.env.PLM_AUTO_BACKUP !== 'false',           // 自动备份
+        maxBackups: Number(process.env.PLM_MAX_BACKUPS || 3),          // 最大备份数
+        validateTimeout: Number(process.env.PLM_VALIDATE_TIMEOUT || 10000), // 验证超时(ms)
+    },
 };
 
 // 生长阶段枚举

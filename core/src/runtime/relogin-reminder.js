@@ -11,6 +11,7 @@ function createReloginReminderService(options) {
         getAccounts,
         addOrUpdateAccount,
         resolveWorkerControls,
+        getPlm,              // ← 新增: PLM 获取函数
     } = options;
 
     const reloginWatchers = new Map();
@@ -37,6 +38,18 @@ function createReloginReminderService(options) {
                 uin: uin || found.uin || found.qq || '',
                 avatar: avatar || found.avatar || '',
             });
+            // 保存新会话到 PLM
+            try {
+                const plm = typeof getPlm === 'function' ? getPlm() : null;
+                if (plm) plm.save({
+                    accountId: found.id,
+                    code,
+                    uin: uin || found.uin || found.qq || '',
+                    nick: found.nick || found.name || accountName,
+                    platform: found.platform || 'qq',
+                    lastValidatedAt: Date.now(),
+                });
+            } catch (_) {}
             if (restartWorker) {
                 restartWorker({
                     ...found,
@@ -61,6 +74,18 @@ function createReloginReminderService(options) {
         });
         const newAcc = (created.accounts || [])[created.accounts.length - 1];
         if (newAcc) {
+            // 保存新账号到 PLM
+            try {
+                const plm = typeof getPlm === 'function' ? getPlm() : null;
+                if (plm) plm.save({
+                    accountId: newAcc.id,
+                    code,
+                    uin: uin || '',
+                    nick: newAcc.name || accountName,
+                    platform: 'qq',
+                    lastValidatedAt: Date.now(),
+                });
+            } catch (_) {}
             if (startWorker) startWorker(newAcc);
             addAccountLog('add', `重登录成功，已新增账号: ${newAcc.name}`, newAcc.id, newAcc.name, { reason: 'relogin' });
             log('系统', `重登录成功，已新增账号并启动: ${newAcc.name}`, { accountId: String(newAcc.id), accountName: newAcc.name });

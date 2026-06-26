@@ -19,6 +19,7 @@ function createWorkerManager(options) {
         onStatusSync,
         onWorkerLog,
         getRuntimeConfig,
+        getPlm,           // ← 新增: PLM 获取函数
     } = options;
     const managerScheduler = createScheduler('worker_manager');
     const useThreadRuntime = runtimeMode === 'thread' && !processRef.pkg && typeof WorkerThread === 'function';
@@ -277,6 +278,11 @@ function createWorkerManager(options) {
                     accountId,
                     worker.name,
                 );
+                // 通知 PLM 会话失效
+                try {
+                    const plm = typeof getPlm === 'function' ? getPlm() : null;
+                    if (plm) plm.invalidate(accountId, 'code_expired');
+                } catch (_) {}
             }
         } else if (msg.type === 'account_kicked') {
             const reason = msg.reason || '未知';
@@ -289,6 +295,11 @@ function createWorkerManager(options) {
                 offlineMs: 0,
             });
             addAccountLog('kickout_stop', `账号 ${worker.name} 被踢下线，已自动停止`, accountId, worker.name, { reason });
+            // 通知 PLM 会话失效
+            try {
+                const plm = typeof getPlm === 'function' ? getPlm() : null;
+                if (plm) plm.invalidate(accountId, 'kicked');
+            } catch (_) {}
             stopWorker(accountId);
         } else if (msg.type === 'api_response') {
             const { id, result, error } = msg;

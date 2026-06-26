@@ -2753,6 +2753,56 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // ============ 持久化登录管理 (PLM) ============
+
+    // PLM 状态查询
+    app.get('/api/admin/plm/status', authRequired, adminRequired, (req, res) => {
+        try {
+            const plm = provider && typeof provider.getPlm === 'function' ? provider.getPlm() : null;
+            if (!plm) {
+                return res.json({ ok: false, error: 'PLM 未启用', data: { enabled: false } });
+            }
+            const sessions = plm.listSessions();
+            res.json({
+                ok: true,
+                data: {
+                    enabled: true,
+                    sessionCount: sessions.length,
+                    sessions,
+                },
+            });
+        } catch (e) {
+            res.json({ ok: false, error: e.message });
+        }
+    });
+
+    // PLM 强制备份
+    app.post('/api/admin/plm/backup', authRequired, adminRequired, async (req, res) => {
+        try {
+            const plm = provider && typeof provider.getPlm === 'function' ? provider.getPlm() : null;
+            if (!plm) return res.json({ ok: false, error: 'PLM 未启用' });
+            const backupId = await plm.backup();
+            res.json({ ok: true, data: { backupId } });
+        } catch (e) {
+            res.json({ ok: false, error: e.message });
+        }
+    });
+
+    // PLM 验证指定会话
+    app.post('/api/admin/plm/validate/:accountId', authRequired, adminRequired, async (req, res) => {
+        try {
+            const plm = provider && typeof provider.getPlm === 'function' ? provider.getPlm() : null;
+            if (!plm) return res.json({ ok: false, error: 'PLM 未启用' });
+            const { accountId } = req.params;
+            const session = plm.getSession(accountId);
+            if (!session) return res.json({ ok: false, error: '会话未加载' });
+            const result = await plm.validate(accountId, { timeout: 10000 });
+            res.json({ ok: true, data: result });
+        } catch (e) {
+            res.json({ ok: false, error: e.message });
+        }
+    });
+
     // 更新管理员微信配置（仅管理员）
     app.post('/api/admin/wx-config', authRequired, adminRequired, (req, res) => {
         try {
