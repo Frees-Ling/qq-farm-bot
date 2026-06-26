@@ -2264,6 +2264,18 @@ function startAdminServer(dataProvider) {
                 return res.status(403).json({ ok: false, error: '无权访问此账号' });
             }
 
+            // 如果账号不存在，返回默认配置
+            if (id && store.getAccounts && !store.getAccounts().accounts?.find((a) => String(a.id) === String(id))) {
+                return res.json({ ok: true, data: {
+                    intervals: { farm: 2, farmMin: 2, farmMax: 2, helpMin: 10, helpMax: 10, stealMin: 10, stealMax: 10 },
+                    strategy: 'preferred', preferredSeed: 0, friendQuietHours: { enabled: false, start: '23:00', end: '07:00' },
+                    automation: {}, stealDelaySeconds: 0, plantOrderRandom: false, plantDelaySeconds: 0,
+                    fastHarvestAdvanceMs: 200, ui: { theme: 'dark' },
+                    offlineReminder: { channel: 'webhook', reloginUrlMode: 'none', endpoint: '', token: '', title: '', msg: '' },
+                    stakeoutSteal: { enabled: false, delaySec: 3, maxAheadSec: 14400, friendList: [] }, automationSyncEnabled: false,
+                }});
+            }
+
             // 直接从主进程的 store 读取，确保即使账号未运行也能获取配置
             const intervals = store.getIntervals(id);
             const strategy = store.getPlantingStrategy(id);
