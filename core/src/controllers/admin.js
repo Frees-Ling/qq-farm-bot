@@ -2259,12 +2259,8 @@ function startAdminServer(dataProvider) {
             const id = getAccId(req);
             const currentUser = req.currentUser;
 
-            // 检查权限（如果指定了账号ID）
-            if (id && !checkAccountAccess(req, id)) {
-                return res.status(403).json({ ok: false, error: '无权访问此账号' });
-            }
-
-            // 如果账号不存在，返回默认配置
+            // 如果账号不存在，返回默认配置（解决删除账号后Settings页面403的问题）
+            // 这个检查必须在 checkAccountAccess 之前，因为 checkAccountAccess 对不存在的账号也返回403
             if (id && store.getAccounts && !store.getAccounts().accounts?.find((a) => String(a.id) === String(id))) {
                 return res.json({ ok: true, data: {
                     intervals: { farm: 2, farmMin: 2, farmMax: 2, helpMin: 10, helpMax: 10, stealMin: 10, stealMax: 10 },
@@ -2274,6 +2270,11 @@ function startAdminServer(dataProvider) {
                     offlineReminder: { channel: 'webhook', reloginUrlMode: 'none', endpoint: '', token: '', title: '', msg: '' },
                     stakeoutSteal: { enabled: false, delaySec: 3, maxAheadSec: 14400, friendList: [] }, automationSyncEnabled: false,
                 }});
+            }
+
+            // 检查权限（如果指定了账号ID）
+            if (id && !checkAccountAccess(req, id)) {
+                return res.status(403).json({ ok: false, error: '无权访问此账号' });
             }
 
             // 直接从主进程的 store 读取，确保即使账号未运行也能获取配置
