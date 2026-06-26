@@ -161,12 +161,24 @@ function createRuntimeEngine(options = {}) {
     if (accounts.length > 0) {
       log('系统', `发现 ${accounts.length} 个账号，正在启动...`)
 
-      // 集成 PLM: 导入现有账号到加密存储
+      // 集成 PLM: 导入现有账号到加密存储并加载到内存
       try {
         const plmInstance = await ensurePlm();
         if (plmInstance) {
           const imported = await plmInstance.importFromAccounts(accounts);
           if (imported > 0) log('系统', `PLM: 已导入 ${imported} 个账号到加密存储`);
+          // 将加密存储中的会话加载到 PLM 内存，供 startWorker 回退使用
+          let loadedCount = 0;
+          for (const acc of accounts) {
+            try {
+              const session = plmInstance.getSession(acc.id);
+              if (!session && acc.code) {
+                const loaded = await plmInstance.load(acc.id);
+                if (loaded && loaded.code) loadedCount++;
+              }
+            } catch (_) {}
+          }
+          if (loadedCount > 0) log('系统', `PLM: 已加载 ${loadedCount} 个加密会话到内存`);
         }
       } catch (err) {
         log('系统', `PLM 初始化跳过: ${err.message}`);

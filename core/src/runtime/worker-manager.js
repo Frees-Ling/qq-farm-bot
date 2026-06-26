@@ -59,6 +59,20 @@ function createWorkerManager(options) {
 
     function startWorker(account) {
         if (!account || !account.id) return false;
+
+        // 如果 accounts.json 中的 code 为空，尝试从 PLM 加密存储回退加载
+        if (!account.code && typeof getPlm === 'function') {
+            try {
+                const plm = getPlm();
+                if (plm) {
+                    const session = plm.getSession(account.id);
+                    if (session && session.code) {
+                        account = { ...account, code: session.code };
+                    }
+                }
+            } catch (_) {}
+        }
+
         if (/^-\d+$/.test(String(account.code || '').trim())) {
             log('错误', `账号 ${account.name} 登录 Code 无效，请重新扫码获取`, {
                 accountId: String(account.id),

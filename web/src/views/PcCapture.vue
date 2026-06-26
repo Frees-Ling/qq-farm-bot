@@ -231,19 +231,35 @@ onUnmounted(() => stopPolling())
         <div class="flex items-start gap-3">
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">2</span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-foreground">在你的电脑上运行</p>
+            <p class="text-sm font-medium text-foreground">在你的电脑上运行抓包脚本</p>
             <p class="text-xs text-foreground-muted mt-0.5">根据你的操作系统运行下载的脚本：
               <span v-if="platform === 'windows'">双击运行 <code>qq-farm-patch.bat</code>（如需管理员权限请右键 → 「以管理员身份运行」）</span>
-              <span v-else>终端执行: <code>chmod +x qq-farm-patch.sh && ./qq-farm-patch.sh</code></span>
+              <span v-else>终端执行: <code>chmod +x qq-farm-patch.sh && sudo ./qq-farm-patch.sh</code></span>
             </p>
+          </div>
+        </div>
+
+        <!-- ⚠️ 关键提示：必须先运行脚本，再打开农场 -->
+        <div class="rounded-lg border-2 border-orange-400/60 bg-orange-50 p-4 dark:border-orange-600/60 dark:bg-orange-900/20">
+          <div class="flex items-start gap-3">
+            <span class="mt-0.5 text-xl">⚠️</span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold text-orange-800 dark:text-orange-300">
+                <strong>必须先运行抓包脚本，再打开QQ农场！</strong>
+              </p>
+              <p class="mt-1 text-xs text-orange-700 dark:text-orange-400">
+                抓包脚本需要在后台监听QQ农场的网络请求。如果先打开QQ农场再运行脚本，已经发起的登录请求将无法被捕获到，你需要关闭农场重新打开才能生效。
+                运行脚本后请保持终端窗口打开，脚本会持续在后台监听。
+              </p>
+            </div>
           </div>
         </div>
 
         <div class="flex items-start gap-3">
           <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: var(--theme-primary); color: white">3</span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-foreground">打开QQ经典农场</p>
-            <p class="text-xs text-foreground-muted mt-0.5">在你的电脑上登录QQ，打开QQ经典农场小程序。补丁会自动拦截Code并发送到服务器。</p>
+            <p class="text-sm font-medium text-foreground">打开QQ经典农场（脚本运行后）</p>
+            <p class="text-xs text-foreground-muted mt-0.5">确认抓包脚本已在电脑上运行，然后登录QQ，打开QQ经典农场小程序。补丁会自动拦截网络请求，提取登录凭证（Code）并发送到服务器。</p>
           </div>
         </div>
 
@@ -282,6 +298,9 @@ onUnmounted(() => stopPolling())
         <div class="i-carbon-audio-spectrum text-6xl text-foreground-muted" />
         <p class="text-lg text-foreground">准备好后，点击开始监听</p>
         <p class="text-sm text-foreground-muted">{{ isRemote ? '确保已按上述步骤配置好补丁' : '然后打开PC QQ上的QQ经典农场' }}</p>
+        <div v-if="isRemote" class="w-full max-w-md rounded-lg border-2 border-orange-300/60 bg-orange-50 p-3 text-xs text-orange-800 dark:border-orange-700/40 dark:bg-orange-900/20 dark:text-orange-200">
+          <strong>⚠️ 重要顺序：</strong>先 <strong>下载并运行脚本</strong>，再打开QQ农场。脚本未运行时打开农场将无法捕获到Code！
+        </div>
         <BaseButton variant="primary" size="lg" @click="startListening">
           🎯 开始监听
         </BaseButton>
@@ -294,11 +313,15 @@ onUnmounted(() => stopPolling())
         <div class="w-full max-w-md rounded-lg border border-blue-200/60 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-700/40 dark:bg-blue-900/20 dark:text-blue-200">
           <p class="font-medium mb-2">📋 操作步骤</p>
           <ol class="list-decimal pl-4 space-y-1 text-xs">
+            <li>✅ 下载并运行抓包脚本（<strong class="text-orange-600">必须已在电脑上运行！</strong>）</li>
             <li>打开电脑上的 <strong>QQ</strong></li>
             <li>找到并打开 <strong>QQ经典农场</strong> 小程序</li>
             <li>等待几秒，补丁自动捕获Code</li>
             <li>页面会自动检测到新账号 🎉</li>
           </ol>
+        </div>
+        <div class="w-full max-w-md rounded-lg border-2 border-orange-300/60 bg-orange-50 p-3 text-xs text-orange-800 dark:border-orange-700/40 dark:bg-orange-900/20 dark:text-orange-200">
+          <strong>⚠️ 重要：</strong>如果还没运行抓包脚本，请先运行脚本再打开QQ农场。顺序反了将无法捕获到Code，需关闭农场重新打开。
         </div>
         <p class="text-sm text-foreground-muted animate-pulse">等待PC QQ打开农场...</p>
         <BaseButton variant="outline" size="sm" @click="stopPolling(); status='idle'">
