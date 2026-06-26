@@ -652,7 +652,7 @@ function startAdminServer(dataProvider) {
             pendingCodes.push({ code, uin, platform: 'qq', capturedAt: Date.now(), claimed: false });
             adminLogger.info('code-capture -> pending: 已重定向', { code: code.substring(0, 20), uin, pendingCount: pendingCodes.filter(c => !c.claimed).length });
             // 自动匹配到已有账号
-            tryAutoApplyPendingCode(code, uin, 'qq');
+            tryAutoApplyPendingCode(code, uin, 'qq', pendingCodes[pendingCodes.length - 1]);
             res.json({ ok: true, data: { redirected: true, message: 'Code已转入待认领队列' } });
         } catch (e) {
             adminLogger.error('code-capture failed', { error: e.message });
