@@ -576,6 +576,8 @@ function startHeartbeat() {
 let savedLoginCallback = null;
 let savedCode = null;
 let savedProxyUrl = '';
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 function normalizeProxyUrl(proxyUrl) {
     const value = String(proxyUrl || '').trim();
@@ -618,7 +620,10 @@ function buildWsUrl(code, tryFormat = 0) {
 
 function connect(code, onLoginSuccess, options = {}) {
     savedLoginCallback = onLoginSuccess;
-    if (code) savedCode = code;
+    if (code) {
+        savedCode = code;
+        reconnectAttempts = 0; // 新 code 时重置重连计数
+    }
     if (hasOwn(options, 'proxyUrl')) savedProxyUrl = normalizeProxyUrl(options.proxyUrl);
     const url = buildWsUrl(savedCode, 0);
 
@@ -634,6 +639,7 @@ function connect(code, onLoginSuccess, options = {}) {
 
     ws.on('open', () => {
         console.log(`[WS] ✅ WebSocket 连接成功`);
+        reconnectAttempts = 0;
         sendLogin(onLoginSuccess);
     });
 
@@ -647,8 +653,18 @@ function connect(code, onLoginSuccess, options = {}) {
         console.warn(`[WS] 关闭原因: ${reason}`);
         cleanup(`连接关闭(code=${code})`);
         if (savedLoginCallback) {
+            reconnectAttempts++;
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                log('系统', `[WS] 已达最大重连次数 (${MAX_RECONNECT_ATTEMPTS})，停止重连，等待新 Code...`);
+                // 通知父进程：code 已过期，需要新的登录凭证
+                if (typeof process.send === 'function') {
+                    process.send({ type: 'login_failed', reason: 'code_expired', accountId: process.env.FARM_ACCOUNT_ID || '' });
+                }
+                reconnectAttempts = 0;
+                return;
+            }
             networkScheduler.setTimeoutTask('auto_reconnect', 5000, () => {
-                log('系统', '[WS] 尝试自动重连...');
+                log('系统', `[WS] 尝试自动重连 (第${reconnectAttempts}次)...`);
                 reconnect(null);
             });
         }

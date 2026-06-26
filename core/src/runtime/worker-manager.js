@@ -298,6 +298,24 @@ function createWorkerManager(options) {
                     if (plm) plm.invalidate(accountId, 'code_expired');
                 } catch (_) {}
             }
+        } else if (msg.type === 'login_failed') {
+            // 子进程因 code 过期无法重连，触发自动重登录流程
+            const reason = msg.reason || 'unknown';
+            log('系统', `账号 ${worker.name} 登录失效 (${reason})，自动触发重登录流程`, { accountId: String(accountId), accountName: worker.name });
+            addAccountLog('login_failed', `账号 ${worker.name} 登录凭证已过期，尝试自动重登录`, accountId, worker.name, { reason });
+            // 通知 PLM 会话失效
+            try {
+                const plm = typeof getPlm === 'function' ? getPlm() : null;
+                if (plm) plm.invalidate(accountId, 'code_expired');
+            } catch (_) {}
+            // 触发下线提醒（含二维码重登录）
+            triggerOfflineReminder({
+                accountId,
+                accountName: worker.name,
+                username: worker.username || '',
+                reason: `login_failed:${reason}`,
+                offlineMs: 0,
+            });
         } else if (msg.type === 'account_kicked') {
             const reason = msg.reason || '未知';
             log('系统', `账号 ${worker.name} 被踢下线，已自动停止账号`, { accountId: String(accountId), accountName: worker.name });
