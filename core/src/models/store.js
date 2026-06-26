@@ -600,7 +600,7 @@ function loadGlobalConfig() {
                     proxyApiUrl: String(data.adminWxConfig.proxyApiUrl || 'https://api.aineishe.com/api/wxnc').trim(),
                 };
             }
-n            // 加载持久化设备指纹
+            // 加载持久化设备指纹
             if (data.deviceFingerprint) {
                 globalConfig.deviceFingerprint = String(data.deviceFingerprint).trim();
             }
@@ -680,7 +680,9 @@ function setAdminPasswordHash(hash) {
     globalConfig.adminPasswordHash = String(hash || '');
     saveGlobalConfig();
     return globalConfig.adminPasswordHash;
-n// ============ 设备指纹持久化 ============
+}
+
+// ============ 设备指纹持久化 ============
 
 function getDeviceId() {
     return String(globalConfig.deviceId || "").trim() || DEFAULT_RUNTIME_CONFIG.deviceId;
@@ -698,7 +700,6 @@ function getDeviceFingerprint() {
 function setDeviceFingerprint(fp) {
     globalConfig.deviceFingerprint = String(fp || "").trim();
     saveGlobalConfig();
-}
 }
 
 function reloadGlobalConfig() {

@@ -11,38 +11,6 @@ const { createRuntimeState } = require('./runtime-state')
 const { createWorkerManager } = require('./worker-manager')
 const { CONFIG } = require('../config/config')
 
-// ====== 持久化登录 (PLM) ======
-let plm = null;
-async function ensurePlm() {
-  if (plm) return plm;
-  const { PersistentLoginManager } = require('../services/persistent-login');
-  const { LoginStore } = require('../services/login-store');
-  const { SessionValidator } = require('../services/session-validator');
-  const { getDataFile } = require('../config/runtime-paths');
-
-  if (!CONFIG.persistentLogin.enabled) {
-    return null;
-  }
-
-  const store_ = new LoginStore({
-    filePath: getDataFile('session-store.json'),
-    cryptoPassword: CONFIG.persistentLogin.cryptoPassword,
-    autoBackup: CONFIG.persistentLogin.autoBackup,
-    maxBackups: CONFIG.persistentLogin.maxBackups,
-  });
-
-  plm = new PersistentLoginManager({
-    store: store_,
-    validator: new SessionValidator(),
-    autoValidateOnLoad: CONFIG.persistentLogin.autoValidateOnLoad,
-    enableBackup: CONFIG.persistentLogin.autoBackup,
-  });
-
-  await plm.init();
-  log('系统', `持久化登录管理器已初始化 (加密: ${CONFIG.persistentLogin.cryptoPassword ? '已启用' : '默认密钥'})`);
-  return plm;
-}
-
 const OPERATION_KEYS = ['harvest', 'water', 'weed', 'bug', 'fertilize', 'plant', 'steal', 'helpWater', 'helpWeed', 'helpBug', 'taskClaim', 'sell', 'upgrade']
 
 function createRuntimeEngine(options = {}) {
@@ -73,6 +41,36 @@ function createRuntimeEngine(options = {}) {
     buildDefaultStatus,
     filterLogs,
   } = runtimeState
+
+  // ====== 持久化登录 (PLM) ======
+  let plm = null;
+  async function ensurePlm() {
+    if (plm) return plm;
+    const { PersistentLoginManager } = require('../services/persistent-login');
+    const { LoginStore } = require('../services/login-store');
+    const { SessionValidator } = require('../services/session-validator');
+    const { getDataFile } = require('../config/runtime-paths');
+
+    if (!CONFIG.persistentLogin.enabled) return null;
+
+    const store_ = new LoginStore({
+      filePath: getDataFile('session-store.json'),
+      cryptoPassword: CONFIG.persistentLogin.cryptoPassword,
+      autoBackup: CONFIG.persistentLogin.autoBackup,
+      maxBackups: CONFIG.persistentLogin.maxBackups,
+    });
+
+    plm = new PersistentLoginManager({
+      store: store_,
+      validator: new SessionValidator(),
+      autoValidateOnLoad: CONFIG.persistentLogin.autoValidateOnLoad,
+      enableBackup: CONFIG.persistentLogin.autoBackup,
+    });
+
+    await plm.init();
+    log('系统', `持久化登录管理器已初始化`);
+    return plm;
+  }
 
   const reloginReminder = createReloginReminderService({
     store,
