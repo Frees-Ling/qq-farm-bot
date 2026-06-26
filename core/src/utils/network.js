@@ -578,6 +578,9 @@ let savedCode = null;
 let savedProxyUrl = '';
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
+let pingInterval = null;
+let lastPongTime = Date.now();
+const PING_TIMEOUT = 30000; // 30秒无pong认为连接断开
 
 function normalizeProxyUrl(proxyUrl) {
     const value = String(proxyUrl || '').trim();
@@ -637,6 +640,21 @@ function connect(code, onLoginSuccess, options = {}) {
 
     ws.binaryType = 'arraybuffer';
 
+    // WebSocket 协议层心跳检测（ping/pong），比应用层心跳更快感知断线
+    lastPongTime = Date.now();
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.ping(); } catch (_) {}
+            // 如果长时间没收到 pong，主动断开触发重连
+            if (Date.now() - lastPongTime > PING_TIMEOUT) {
+                logWarn('系统', '[WS] 心跳超时，主动断开连接');
+                try { ws.terminate(); } catch (_) {}
+            }
+        }
+    }, 15000);
+    ws.on('pong', () => { lastPongTime = Date.now(); });
+
     ws.on('open', () => {
         console.log(`[WS] ✅ WebSocket 连接成功`);
         reconnectAttempts = 0;
@@ -652,6 +670,7 @@ function connect(code, onLoginSuccess, options = {}) {
         const reason = _reason && _reason.code ? _reason.code : (_reason ? String(_reason) : '');
         console.warn(`[WS] 关闭原因: ${reason}`);
         cleanup(`连接关闭(code=${code})`);
+        if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
         if (savedLoginCallback) {
             reconnectAttempts++;
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -663,7 +682,10 @@ function connect(code, onLoginSuccess, options = {}) {
                 reconnectAttempts = 0;
                 return;
             }
-            networkScheduler.setTimeoutTask('auto_reconnect', 5000, () => {
+            // 指数退避：1s, 2s, 4s ... 上限30s
+            const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
+            log('系统', `[WS] 将在 ${backoff/1000}秒后重连 (第${reconnectAttempts}次)...`);
+            networkScheduler.setTimeoutTask('auto_reconnect', backoff, () => {
                 log('系统', `[WS] 尝试自动重连 (第${reconnectAttempts}次)...`);
                 reconnect(null);
             });
@@ -710,6 +732,7 @@ function connect(code, onLoginSuccess, options = {}) {
 function cleanup(reason = '网络清理') {
     rejectAllPendingRequests(`请求已中断: ${reason}`);
     networkScheduler.clearAll();
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
 }
 
 function reconnect(newCode) {
