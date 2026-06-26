@@ -651,6 +651,8 @@ function startAdminServer(dataProvider) {
             // 所有经过code-capture的Code都重定向到pending队列（多用户认领系统）
             pendingCodes.push({ code, uin, platform: 'qq', capturedAt: Date.now(), claimed: false });
             adminLogger.info('code-capture -> pending: 已重定向', { code: code.substring(0, 20), uin, pendingCount: pendingCodes.filter(c => !c.claimed).length });
+            // 自动匹配到已有账号
+            tryAutoApplyPendingCode(code, uin, 'qq');
             res.json({ ok: true, data: { redirected: true, message: 'Code已转入待认领队列' } });
         } catch (e) {
             adminLogger.error('code-capture failed', { error: e.message });
@@ -662,6 +664,85 @@ function startAdminServer(dataProvider) {
 
     // ============ 待认领Code（多用户抓包） ============
     const pendingCodes = [];
+
+    /**
+     * 尝试将捕获到的 code 自动匹配到已有账号（by uin/qq）
+     * 匹配成功则直接更新 code 并重启 worker，实现无缝重登录
+     * @param {string} code
+     * @param {string} uin
+     * @param {string} platform
+     * @param {object} [pendingItem] - 可选，待认领队列条目（匹配成功后会标记为已认领）
+     */
+    function tryAutoApplyPendingCode(code, uin, platform, pendingItem) {
+        if (!uin || !code) return false;
+        const accounts = getAccountList();
+        const match = accounts.find(a =>
+            String(a.uin || a.qq || '') === String(uin) ||
+            String(a.qq || a.uin || '') === String(uin)
+        );
+        if (!match) {
+            adminLogger.info('auto-apply: 无匹配账号，保留为待认领', { uin, code: code.substring(0, 20) });
+            return false;
+        }
+        // 标记为已认领（如果在待认领队列中）
+        if (pendingItem) {
+            pendingItem.claimed = true;
+            pendingItem.claimedBy = 'system';
+            pendingItem.claimedAt = Date.now();
+        }
+        adminLogger.info('auto-apply: 匹配到账号，自动应用新 Code', {
+            accountId: match.id,
+            accountName: match.name,
+            uin,
+        });
+        // 1. 更新 accounts.json
+        addOrUpdateAccount({
+            id: match.id,
+            name: match.name,
+            code,
+            platform: match.platform || platform || 'qq',
+            uin: uin || match.uin || match.qq || '',
+            qq: uin || match.qq || match.uin || '',
+        });
+        // 2. 保存到 PLM
+        try {
+            const plm = provider && typeof provider.getPlm === 'function' ? provider.getPlm() : null;
+            if (plm) {
+                plm.save({
+                    accountId: match.id,
+                    code,
+                    uin: uin || match.uin || match.qq || '',
+                    nick: match.nick || match.name || '',
+                    platform: match.platform || platform || 'qq',
+                    lastValidatedAt: Date.now(),
+                }).catch(() => {});
+            }
+        } catch (_) {}
+        // 3. 重启 worker
+        try {
+            if (provider && typeof provider.restartAccount === 'function') {
+                provider.restartAccount(match.id);
+            } else if (provider && typeof provider.startAccount === 'function') {
+                provider.startAccount(match.id);
+            }
+        } catch (_) {}
+        console.log(`\n========================================`);
+        console.log(`[auto-apply] ✅ Code 已自动应用到账号: ${match.name}`);
+        console.log(`[auto-apply]    账号ID: ${match.id}`);
+        console.log(`[auto-apply]    UIN: ${uin}`);
+        console.log(`========================================\n`);
+        return true;
+    }
+
+    // 启动后台轮询：每10秒检查待认领 Code，自动匹配已有账号
+    // 确保即使 code 比 worker 先到达，或 worker 还没启动也能恢复
+    setInterval(() => {
+        for (const item of pendingCodes) {
+            if (item.claimed) continue;
+            tryAutoApplyPendingCode(item.code, item.uin, item.platform, item);
+        }
+        while (pendingCodes.length > 50) pendingCodes.shift();
+    }, 10000);
 
     // sniff9988发来的待认领Code（公开接口，支持GET+POST）
     function pendingCodeHandler(req, res) {
@@ -684,6 +765,8 @@ function startAdminServer(dataProvider) {
             console.log(`[capture-debug]    待认领队列: ${pendingCodes.filter(c => !c.claimed).length} 个`);
             console.log(`========================================\n`);
             addCaptureLog('pending-code', { code: code.substring(0, 20), uin, platform });
+            // 自动匹配到已有账号（by uin），匹配成功则直接应用并重启 worker
+            tryAutoApplyPendingCode(code, uin, platform, pendingCodes[pendingCodes.length - 1]);
             res.json({ ok: true });
         } catch (e) {
             adminLogger.error('pending-code 异常', { error: e.message });
