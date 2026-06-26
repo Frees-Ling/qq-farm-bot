@@ -332,6 +332,15 @@ function createWorkerManager(options) {
                 const plm = typeof getPlm === 'function' ? getPlm() : null;
                 if (plm) plm.invalidate(accountId, 'kicked');
             } catch (_) {}
+            // 清除自动重启监听（来自之前 restartWorker 注册的 proc.once('exit', startOnce)）
+            // 被踢下线后旧 code 已过期，自动重启只会浪费连接数
+            try {
+                const proc = worker.process;
+                if (proc && typeof proc.removeAllListeners === 'function') {
+                    proc.removeAllListeners('exit');
+                }
+            } catch (_) {}
+            managerScheduler.clear(`restart_fallback_${accountId}`);
             stopWorker(accountId);
         } else if (msg.type === 'api_response') {
             const { id, result, error } = msg;
