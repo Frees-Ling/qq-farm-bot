@@ -10,7 +10,7 @@ const candidates = [
   path.join(root, "data", "accounts.json"),
 ];
 
-const diagnosticCodePattern = /^(DIAG_CAPTURE_|TEST_SERVER_CAPTURE_)/;
+const diagnosticCodePattern = /^(DIAG_CAPTURE_|TEST_SERVER_CAPTURE_|diag_|test_diagnose)/i;
 
 let changedAny = false;
 for (const file of candidates) {
