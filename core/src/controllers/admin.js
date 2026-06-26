@@ -1731,6 +1731,11 @@ function startAdminServer(dataProvider) {
             const accountId = getAccId(req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
 
+            // 账号不存在时返回空列表
+            if (accountId && !getAccountList().find(a => String(a.id) === String(accountId))) {
+                return res.json({ ok: true, data: [] });
+            }
+
             // 检查权限
             if (!checkAccountAccess(req, accountId)) {
                 return res.status(403).json({ ok: false, error: '无权访问此账号' });
@@ -1838,6 +1843,11 @@ function startAdminServer(dataProvider) {
     app.get('/api/seeds', async (req, res) => {
         const id = getAccId(req);
         if (!id) return res.status(400).json({ ok: false });
+
+        // 账号不存在时返回空列表（解决删除账号后 Settings 页面 403 的问题）
+        if (id && !getAccountList().find(a => String(a.id) === String(id))) {
+            return res.json({ ok: true, data: [] });
+        }
 
         // 检查权限
         if (!checkAccountAccess(req, id)) {
