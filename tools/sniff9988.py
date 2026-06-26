@@ -47,6 +47,10 @@ class CaptureHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         raw = self.path
+        # 详细日志：每个请求都打印
+        print(f"\n>>> [capture] 收到请求: {raw[:300]}", flush=True)
+        print(f">>> [capture] 来源IP: {self.client_address}", flush=True)
+        print(f">>> [capture] Headers: Upgrade={self.headers.get('Upgrade','-')}", flush=True)
         if raw.startswith("http"):
             parsed = urllib.parse.urlparse(raw)
             query = parsed.query

@@ -671,13 +671,23 @@ function startAdminServer(dataProvider) {
             const platform = req.query.platform || (req.body && req.body.platform) || 'qq';
             if (!code || /^-\d+$/.test(code)) {
                 adminLogger.warn('pending-code: 无效code', { code: code.substring(0, 20) });
+                console.warn(`[capture-debug] ❌ 无效code: ${String(code || '').substring(0, 20)}`);
                 return res.status(400).json({ ok: false, error: 'Missing or invalid code' });
             }
             pendingCodes.push({ code, uin, platform, capturedAt: Date.now(), claimed: false });
             adminLogger.info('pending-code: 收到待认领Code', { code: code.substring(0, 20), uin, platform, pendingCount: pendingCodes.filter(c => !c.claimed).length });
+            console.log(`\n========================================`);
+            console.log(`[capture-debug] ✅ 捕获到 Code!`);
+            console.log(`[capture-debug]    code: ${code.substring(0, 30)}...`);
+            console.log(`[capture-debug]    uin: ${uin || '(空)'}`);
+            console.log(`[capture-debug]    platform: ${platform}`);
+            console.log(`[capture-debug]    待认领队列: ${pendingCodes.filter(c => !c.claimed).length} 个`);
+            console.log(`========================================\n`);
+            addCaptureLog('pending-code', { code: code.substring(0, 20), uin, platform });
             res.json({ ok: true });
         } catch (e) {
             adminLogger.error('pending-code 异常', { error: e.message });
+            console.error(`[capture-debug] ❌ pending-code 异常: ${e.message}`);
             res.status(500).json({ ok: false, error: e.message });
         }
     }
@@ -1125,6 +1135,17 @@ function startAdminServer(dataProvider) {
         } else {
             res.status(404).json({ ok: false, error: '补丁脚本文件未找到' });
         }
+    });
+
+    // ============ Code 捕获调试 ============
+    const captureLogs = [];
+    function addCaptureLog(type, data) {
+        captureLogs.unshift({ type, data, at: Date.now() });
+        if (captureLogs.length > 50) captureLogs.length = 50;
+    }
+    // 拦截 pending-code 记录日志
+    app.get('/api/pc-capture/debug', async (req, res) => {
+        res.json({ ok: true, data: { logs: captureLogs, now: Date.now() } });
     });
 
     // API: 调度任务快照（用于调度收敛排查）
